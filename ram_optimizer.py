@@ -473,9 +473,6 @@ class RAMOptimizerMenuBar(rumps.App):
             rumps.separator,
             rumps.MenuItem("Quit", callback=self.quit_app)
         ]
-        
-        # Start memory monitoring timer
-        self.update_memory()
 
     @rumps.timer(1)
     def update_memory(self, sender):
