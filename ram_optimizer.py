@@ -1,55 +1,70 @@
 #!/usr/bin/env python3
 """
 Real-Time RAM Optimizer for Mac
-Monitors memory usage and provides optimization features
+Menu bar application with expandable dashboard
 """
 
-import tkinter as tk
-from tkinter import ttk, messagebox
+import rumps
 import psutil
 import subprocess
 import threading
-import time
+import tkinter as tk
+from tkinter import messagebox
 from datetime import datetime
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from collections import deque
 
 
-class RAMOptimizer:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("RAM Optimizer for Mac")
+class RAMOptimizerDashboard:
+    """The expandable tkinter dashboard GUI"""
+    def __init__(self):
+        self.root = None
+        self.memory_history = deque(maxlen=60)
+        self.timestamps = deque(maxlen=60)
+        self.auto_optimize_threshold = 85.0
+        self.dashboard_open = False
+
+    def show_dashboard(self):
+        """Show the dashboard window"""
+        if self.dashboard_open:
+            if self.root:
+                self.root.lift()
+            return
+
+        self.dashboard_open = True
+        self.root = tk.Tk()
+        self.root.title("RAM Optimizer Dashboard")
         self.root.geometry("900x700")
         self.root.configure(bg='#1e1e1e')
         
-        # Data storage for graphs
-        self.memory_history = deque(maxlen=60)
-        self.timestamps = deque(maxlen=60)
-        
         # Auto-optimization settings
         self.auto_optimize = tk.BooleanVar(value=False)
-        self.auto_optimize_threshold = tk.DoubleVar(value=85.0)
+        self.auto_optimize_threshold_var = tk.DoubleVar(value=85.0)
         
-        # Monitoring flag
-        self.monitoring = True
-        
-        # Create GUI
         self.create_gui()
-        
-        # Start monitoring thread
-        self.monitor_thread = threading.Thread(target=self.monitor_memory, daemon=True)
-        self.monitor_thread.start()
         
         # Start GUI update
         self.update_gui()
+        
+        # Handle window closing
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
+        self.root.mainloop()
+
+    def on_closing(self):
+        """Handle window closing"""
+        self.dashboard_open = False
+        if self.root:
+            self.root.destroy()
+            self.root = None
 
     def create_gui(self):
         """Create the main GUI interface"""
         # Title
         title_label = tk.Label(
             self.root, 
-            text="🚀 RAM Optimizer for Mac", 
+            text="🚀 RAM Optimizer Dashboard", 
             font=('Helvetica', 24, 'bold'),
             bg='#1e1e1e', 
             fg='#00ff00'
@@ -192,7 +207,8 @@ class RAMOptimizer:
             fg='white',
             selectcolor='#2d2d2d',
             activebackground='#2d2d2d',
-            activeforeground='white'
+            activeforeground='white',
+            command=self.update_threshold
         )
         auto_check.pack(side=tk.LEFT, padx=5)
         
@@ -201,13 +217,14 @@ class RAMOptimizer:
             from_=50, 
             to=95, 
             orient=tk.HORIZONTAL,
-            variable=self.auto_optimize_threshold,
+            variable=self.auto_optimize_threshold_var,
             font=('Helvetica', 10),
             bg='#2d2d2d', 
             fg='white',
             highlightthickness=0,
             troughcolor='#4a4a4a',
-            activebackground='#45b7d1'
+            activebackground='#45b7d1',
+            command=lambda x: self.update_threshold()
         )
         threshold_scale.pack(side=tk.LEFT, padx=5)
         
@@ -258,28 +275,15 @@ class RAMOptimizer:
         
         return value_label
 
-    def monitor_memory(self):
-        """Monitor memory usage in real-time"""
-        while self.monitoring:
-            try:
-                # Get memory info
-                mem = psutil.virtual_memory()
-                
-                # Store data for graph
-                self.memory_history.append(mem.percent)
-                self.timestamps.append(datetime.now().strftime("%H:%M:%S"))
-                
-                # Check auto-optimization
-                if self.auto_optimize.get() and mem.percent > self.auto_optimize_threshold.get():
-                    self.root.after(0, self.auto_optimize_memory)
-                
-                time.sleep(1)
-            except Exception as e:
-                print(f"Error monitoring memory: {e}")
-                time.sleep(5)
+    def update_threshold(self):
+        """Update the auto-optimization threshold"""
+        self.auto_optimize_threshold = self.auto_optimize_threshold_var.get()
 
     def update_gui(self):
         """Update the GUI with current memory stats"""
+        if not self.dashboard_open or not self.root:
+            return
+            
         try:
             mem = psutil.virtual_memory()
             
@@ -302,13 +306,20 @@ class RAMOptimizer:
             self.update_pressure_indicator(mem.percent)
             
             # Update graph
+            self.memory_history.append(mem.percent)
+            self.timestamps.append(datetime.now().strftime("%H:%M:%S"))
             self.update_graph()
+            
+            # Check auto-optimization
+            if self.auto_optimize.get() and mem.percent > self.auto_optimize_threshold:
+                threading.Thread(target=self.auto_optimize_memory, daemon=True).start()
             
         except Exception as e:
             print(f"Error updating GUI: {e}")
         
         # Schedule next update
-        self.root.after(1000, self.update_gui)
+        if self.root:
+            self.root.after(1000, self.update_gui)
 
     def update_pressure_indicator(self, percent):
         """Update the memory pressure indicator"""
@@ -370,7 +381,6 @@ class RAMOptimizer:
         self.root.update()
         
         try:
-            # Run purge command
             result = subprocess.run(
                 ['sudo', 'purge'],
                 capture_output=True,
@@ -418,7 +428,6 @@ class RAMOptimizer:
         self.root.update()
         
         try:
-            # Clear caches first
             commands = [
                 'sudo rm -rf ~/Library/Caches/*',
                 'sudo purge'
@@ -435,25 +444,113 @@ class RAMOptimizer:
 
     def auto_optimize_memory(self):
         """Auto-optimize memory when threshold is exceeded"""
-        self.status_label.config(text="Auto-optimizing...")
         try:
             subprocess.run(['sudo', 'purge'], capture_output=True, timeout=30)
-            self.status_label.config(text="Auto-optimization completed")
+            if self.status_label:
+                self.status_label.config(text="Auto-optimization completed")
         except Exception as e:
-            self.status_label.config(text=f"Auto-optimization failed: {str(e)}")
-
-    def on_closing(self):
-        """Handle window closing"""
-        self.monitoring = False
-        self.root.destroy()
+            if self.status_label:
+                self.status_label.config(text=f"Auto-optimization failed: {str(e)}")
 
 
-def main():
-    root = tk.Tk()
-    app = RAMOptimizer(root)
-    root.protocol("WM_DELETE_WINDOW", app.on_closing)
-    root.mainloop()
+class RAMOptimizerMenuBar(rumps.App):
+    """Menu bar application for RAM Optimizer"""
+    def __init__(self):
+        super(RAMOptimizerMenuBar, self).__init__("RAM", quit_button=None)
+        
+        self.dashboard = RAMOptimizerDashboard()
+        self.auto_optimize_enabled = False
+        self.auto_optimize_threshold = 85.0
+        
+        # Create menu
+        self.menu = [
+            rumps.MenuItem("Open Dashboard", callback=self.open_dashboard),
+            rumps.separator,
+            rumps.MenuItem("Quick Purge", callback=self.quick_purge),
+            rumps.MenuItem("Clear Caches", callback=self.clear_caches),
+            rumps.separator,
+            rumps.MenuItem("Auto-Optimize: Off", callback=self.toggle_auto_optimize),
+            rumps.separator,
+            rumps.MenuItem("Quit", callback=self.quit_app)
+        ]
+        
+        # Start memory monitoring timer
+        self.update_memory()
+
+    @rumps.timer(1)
+    def update_memory(self, sender):
+        """Update memory display in menu bar"""
+        try:
+            mem = psutil.virtual_memory()
+            self.title = f"RAM {mem.percent:.0f}%"
+            
+            # Auto-optimize if enabled
+            if self.auto_optimize_enabled and mem.percent > self.auto_optimize_threshold:
+                threading.Thread(target=self.auto_optimize_memory, daemon=True).start()
+        except Exception as e:
+            print(f"Error updating memory: {e}")
+
+    def open_dashboard(self, sender):
+        """Open the dashboard in a separate thread"""
+        threading.Thread(target=self.dashboard.show_dashboard, daemon=True).start()
+
+    def quick_purge(self, sender):
+        """Quick memory purge"""
+        threading.Thread(target=self._purge_memory, daemon=True).start()
+
+    def _purge_memory(self):
+        """Perform memory purge"""
+        try:
+            subprocess.run(['sudo', 'purge'], capture_output=True, timeout=30)
+            rumps.notification(title="RAM Optimizer", subtitle="Success", message="Memory purged successfully")
+        except Exception as e:
+            rumps.notification(title="RAM Optimizer", subtitle="Error", message=f"Failed to purge memory: {str(e)}")
+
+    def clear_caches(self, sender):
+        """Clear system caches"""
+        threading.Thread(target=self._clear_caches, daemon=True).start()
+
+    def _clear_caches(self):
+        """Clear cache files"""
+        try:
+            commands = [
+                'sudo rm -rf ~/Library/Caches/*',
+                'sudo rm -rf /Library/Caches/*'
+            ]
+            
+            for cmd in commands:
+                subprocess.run(cmd, shell=True, capture_output=True, timeout=30)
+            
+            rumps.notification(title="RAM Optimizer", subtitle="Success", message="Caches cleared successfully")
+        except Exception as e:
+            rumps.notification(title="RAM Optimizer", subtitle="Error", message=f"Failed to clear caches: {str(e)}")
+
+    def toggle_auto_optimize(self, sender):
+        """Toggle auto-optimization"""
+        self.auto_optimize_enabled = not self.auto_optimize_enabled
+        sender.title = f"Auto-Optimize: {'On' if self.auto_optimize_enabled else 'Off'}"
+        
+        # Also update dashboard setting
+        self.dashboard.auto_optimize.set(self.auto_optimize_enabled)
+        
+        rumps.notification(
+            title="RAM Optimizer", 
+            subtitle="Auto-Optimization", 
+            message=f"Auto-optimization {'enabled' if self.auto_optimize_enabled else 'disabled'}"
+        )
+
+    def auto_optimize_memory(self):
+        """Auto-optimize memory"""
+        try:
+            subprocess.run(['sudo', 'purge'], capture_output=True, timeout=30)
+        except Exception as e:
+            print(f"Auto-optimization error: {e}")
+
+    def quit_app(self, sender):
+        """Quit the application"""
+        rumps.quit_application()
 
 
 if __name__ == "__main__":
-    main()
+    app = RAMOptimizerMenuBar()
+    app.run()
