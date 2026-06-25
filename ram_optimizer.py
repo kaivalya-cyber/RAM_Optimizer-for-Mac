@@ -39,7 +39,7 @@ class RAMOptimizerDashboard:
         self.dashboard_open = True
         self.root = tk.Tk()
         self.root.title("RAM Optimizer Dashboard")
-        self.root.geometry("900x900")
+        self.root.geometry("900x920")
         self.root.configure(bg='#1e1e1e')
         
         # Load settings
@@ -48,6 +48,10 @@ class RAMOptimizerDashboard:
         # Auto-optimization settings
         self.auto_optimize = tk.BooleanVar(value=settings.get('auto_optimize', False))
         self.auto_optimize_threshold_var = tk.DoubleVar(value=settings.get('auto_optimize_threshold', 85.0))
+        
+        # Alert settings
+        self.alert_enabled = tk.BooleanVar(value=settings.get('alert_enabled', False))
+        self.alert_threshold_var = tk.DoubleVar(value=settings.get('alert_threshold', 80.0))
         
         self.create_gui()
         
@@ -296,6 +300,49 @@ class RAMOptimizerDashboard:
         )
         threshold_label.pack(side=tk.LEFT, padx=5)
         
+        # Alert settings
+        alert_frame = tk.Frame(control_frame, bg='#2d2d2d')
+        alert_frame.pack(pady=10)
+        
+        alert_check = tk.Checkbutton(
+            alert_frame,
+            text="Alert when memory usage exceeds:",
+            variable=self.alert_enabled,
+            font=('Helvetica', 11),
+            bg='#2d2d2d',
+            fg='white',
+            selectcolor='#2d2d2d',
+            activebackground='#2d2d2d',
+            activeforeground='white',
+            command=self.save_settings
+        )
+        alert_check.pack(side=tk.LEFT, padx=5)
+        
+        alert_scale = tk.Scale(
+            alert_frame,
+            from_=50,
+            to=99,
+            orient=tk.HORIZONTAL,
+            variable=self.alert_threshold_var,
+            font=('Helvetica', 10),
+            bg='#2d2d2d',
+            fg='white',
+            highlightthickness=0,
+            troughcolor='#4a4a4a',
+            activebackground='#45b7d1',
+            command=lambda x: self.save_settings()
+        )
+        alert_scale.pack(side=tk.LEFT, padx=5)
+        
+        alert_pct_label = tk.Label(
+            alert_frame,
+            text="%",
+            font=('Helvetica', 11),
+            bg='#2d2d2d',
+            fg='white'
+        )
+        alert_pct_label.pack(side=tk.LEFT, padx=5)
+        
         # Status bar
         self.status_label = tk.Label(
             self.root, 
@@ -354,7 +401,9 @@ class RAMOptimizerDashboard:
         """Save settings to JSON config file"""
         settings = {
             'auto_optimize': self.auto_optimize.get() if hasattr(self, 'auto_optimize') else False,
-            'auto_optimize_threshold': self.auto_optimize_threshold_var.get() if hasattr(self, 'auto_optimize_threshold_var') else 85.0
+            'auto_optimize_threshold': self.auto_optimize_threshold_var.get() if hasattr(self, 'auto_optimize_threshold_var') else 85.0,
+            'alert_enabled': self.alert_enabled.get() if hasattr(self, 'alert_enabled') else False,
+            'alert_threshold': self.alert_threshold_var.get() if hasattr(self, 'alert_threshold_var') else 80.0
         }
         try:
             with open(self.config_path, 'w') as f:
@@ -610,6 +659,12 @@ class RAMOptimizerMenuBar(rumps.App):
         self.auto_optimize_enabled = settings.get('auto_optimize', False)
         self.auto_optimize_threshold = settings.get('auto_optimize_threshold', 85.0)
         
+        # Alert settings
+        self.alert_enabled = settings.get('alert_enabled', False)
+        self.alert_threshold = settings.get('alert_threshold', 80.0)
+        self.last_alert_time = 0
+        self.alert_cooldown = 300  # 5 minutes between alerts
+        
         # Create menu
         auto_label = f"Auto-Optimize: {'On' if self.auto_optimize_enabled else 'Off'}"
         self.menu = [
@@ -634,6 +689,9 @@ class RAMOptimizerMenuBar(rumps.App):
             # Auto-optimize if enabled
             if self.auto_optimize_enabled and mem.percent > self.auto_optimize_threshold:
                 threading.Thread(target=self.auto_optimize_memory, daemon=True).start()
+            
+            # Memory alerts
+            self.check_memory_alerts(mem.percent)
         except Exception as e:
             print(f"Error updating memory: {e}")
 
@@ -702,7 +760,9 @@ class RAMOptimizerMenuBar(rumps.App):
         """Save settings to JSON config file"""
         settings = {
             'auto_optimize': self.auto_optimize_enabled,
-            'auto_optimize_threshold': self.auto_optimize_threshold
+            'auto_optimize_threshold': self.auto_optimize_threshold,
+            'alert_enabled': self.alert_enabled,
+            'alert_threshold': self.alert_threshold
         }
         try:
             with open(self.config_path, 'w') as f:
@@ -720,6 +780,28 @@ class RAMOptimizerMenuBar(rumps.App):
     def quit_app(self, sender):
         """Quit the application"""
         rumps.quit_application()
+
+    def check_memory_alerts(self, mem_percent):
+        """Check and send memory alerts with cooldown"""
+        if not self.alert_enabled:
+            return
+        if mem_percent < self.alert_threshold:
+            return
+        
+        now = datetime.now().timestamp()
+        if now - self.last_alert_time < self.alert_cooldown:
+            return
+        
+        self.last_alert_time = now
+        threading.Thread(target=self._send_alert, args=(mem_percent,), daemon=True).start()
+
+    def _send_alert(self, mem_percent):
+        """Send a macOS notification for high memory usage"""
+        rumps.notification(
+            title="⚠️ RAM Optimizer Alert",
+            subtitle=f"High Memory Usage: {mem_percent:.1f}%",
+            message="Memory usage exceeds your alert threshold. Consider optimizing."
+        )
 
 
 if __name__ == "__main__":
