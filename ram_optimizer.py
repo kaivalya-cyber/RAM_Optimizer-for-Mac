@@ -53,6 +53,9 @@ class RAMOptimizerDashboard:
         self.alert_enabled = tk.BooleanVar(value=settings.get('alert_enabled', False))
         self.alert_threshold_var = tk.DoubleVar(value=settings.get('alert_threshold', 80.0))
         
+        # Battery-aware setting
+        self.battery_aware = tk.BooleanVar(value=settings.get('battery_aware', True))
+        
         self.create_gui()
         
         # Start GUI update
@@ -343,6 +346,24 @@ class RAMOptimizerDashboard:
         )
         alert_pct_label.pack(side=tk.LEFT, padx=5)
         
+        # Battery-aware optimization setting
+        battery_frame = tk.Frame(control_frame, bg='#2d2d2d')
+        battery_frame.pack(pady=10)
+        
+        battery_check = tk.Checkbutton(
+            battery_frame,
+            text="🔋 Disable Auto-Optimize when on battery power",
+            variable=self.battery_aware,
+            font=('Helvetica', 11),
+            bg='#2d2d2d',
+            fg='white',
+            selectcolor='#2d2d2d',
+            activebackground='#2d2d2d',
+            activeforeground='white',
+            command=self.save_settings
+        )
+        battery_check.pack(side=tk.LEFT, padx=5)
+        
         # Status bar
         self.status_label = tk.Label(
             self.root, 
@@ -403,7 +424,8 @@ class RAMOptimizerDashboard:
             'auto_optimize': self.auto_optimize.get() if hasattr(self, 'auto_optimize') else False,
             'auto_optimize_threshold': self.auto_optimize_threshold_var.get() if hasattr(self, 'auto_optimize_threshold_var') else 85.0,
             'alert_enabled': self.alert_enabled.get() if hasattr(self, 'alert_enabled') else False,
-            'alert_threshold': self.alert_threshold_var.get() if hasattr(self, 'alert_threshold_var') else 80.0
+            'alert_threshold': self.alert_threshold_var.get() if hasattr(self, 'alert_threshold_var') else 80.0,
+            'battery_aware': self.battery_aware.get() if hasattr(self, 'battery_aware') else True
         }
         try:
             with open(self.config_path, 'w') as f:
@@ -665,6 +687,9 @@ class RAMOptimizerMenuBar(rumps.App):
         self.last_alert_time = 0
         self.alert_cooldown = 300  # 5 minutes between alerts
         
+        # Battery-aware setting
+        self.battery_aware = settings.get('battery_aware', True)
+        
         # Create menu
         auto_label = f"Auto-Optimize: {'On' if self.auto_optimize_enabled else 'Off'}"
         self.menu = [
@@ -686,9 +711,10 @@ class RAMOptimizerMenuBar(rumps.App):
             cpu_pct = psutil.cpu_percent(interval=None)
             self.title = f"RAM {mem.percent:.0f}% | CPU {cpu_pct:.0f}%"
             
-            # Auto-optimize if enabled
+            # Auto-optimize if enabled (with battery check)
             if self.auto_optimize_enabled and mem.percent > self.auto_optimize_threshold:
-                threading.Thread(target=self.auto_optimize_memory, daemon=True).start()
+                if not self._is_on_battery():
+                    threading.Thread(target=self.auto_optimize_memory, daemon=True).start()
             
             # Memory alerts
             self.check_memory_alerts(mem.percent)
@@ -762,7 +788,8 @@ class RAMOptimizerMenuBar(rumps.App):
             'auto_optimize': self.auto_optimize_enabled,
             'auto_optimize_threshold': self.auto_optimize_threshold,
             'alert_enabled': self.alert_enabled,
-            'alert_threshold': self.alert_threshold
+            'alert_threshold': self.alert_threshold,
+            'battery_aware': self.battery_aware
         }
         try:
             with open(self.config_path, 'w') as f:
@@ -780,6 +807,18 @@ class RAMOptimizerMenuBar(rumps.App):
     def quit_app(self, sender):
         """Quit the application"""
         rumps.quit_application()
+
+    def _is_on_battery(self):
+        """Check if the system is running on battery power"""
+        if not self.battery_aware:
+            return False
+        try:
+            battery = psutil.sensors_battery()
+            if battery is None:
+                return False  # Desktop Macs don't have battery info
+            return not battery.power_plugged
+        except Exception:
+            return False
 
     def check_memory_alerts(self, mem_percent):
         """Check and send memory alerts with cooldown"""
