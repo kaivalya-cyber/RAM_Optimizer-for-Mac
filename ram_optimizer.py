@@ -8,6 +8,8 @@ import rumps
 import psutil
 import subprocess
 import threading
+import json
+import os
 import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter import messagebox
@@ -25,6 +27,7 @@ class RAMOptimizerDashboard:
         self.timestamps = deque(maxlen=60)
         self.auto_optimize_threshold = 85.0
         self.dashboard_open = False
+        self.config_path = os.path.expanduser('~/.ram_optimizer_config.json')
 
     def show_dashboard(self):
         """Show the dashboard window"""
@@ -39,9 +42,12 @@ class RAMOptimizerDashboard:
         self.root.geometry("900x900")
         self.root.configure(bg='#1e1e1e')
         
+        # Load settings
+        settings = self.load_settings()
+        
         # Auto-optimization settings
-        self.auto_optimize = tk.BooleanVar(value=False)
-        self.auto_optimize_threshold_var = tk.DoubleVar(value=85.0)
+        self.auto_optimize = tk.BooleanVar(value=settings.get('auto_optimize', False))
+        self.auto_optimize_threshold_var = tk.DoubleVar(value=settings.get('auto_optimize_threshold', 85.0))
         
         self.create_gui()
         
@@ -331,6 +337,30 @@ class RAMOptimizerDashboard:
     def update_threshold(self):
         """Update the auto-optimization threshold"""
         self.auto_optimize_threshold = self.auto_optimize_threshold_var.get()
+        self.save_settings()
+
+    def load_settings(self):
+        """Load settings from JSON config file"""
+        try:
+            if os.path.exists(self.config_path):
+                with open(self.config_path, 'r') as f:
+                    settings = json.load(f)
+                return settings
+        except (json.JSONDecodeError, IOError):
+            pass
+        return {}
+
+    def save_settings(self):
+        """Save settings to JSON config file"""
+        settings = {
+            'auto_optimize': self.auto_optimize.get() if hasattr(self, 'auto_optimize') else False,
+            'auto_optimize_threshold': self.auto_optimize_threshold_var.get() if hasattr(self, 'auto_optimize_threshold_var') else 85.0
+        }
+        try:
+            with open(self.config_path, 'w') as f:
+                json.dump(settings, f, indent=2)
+        except IOError:
+            pass
 
     def update_gui(self):
         """Update the GUI with current memory stats"""
@@ -573,18 +603,22 @@ class RAMOptimizerMenuBar(rumps.App):
     def __init__(self):
         super(RAMOptimizerMenuBar, self).__init__("RAM", quit_button=None)
         
+        self.config_path = os.path.expanduser('~/.ram_optimizer_config.json')
+        settings = self.load_settings()
+        
         self.dashboard = RAMOptimizerDashboard()
-        self.auto_optimize_enabled = False
-        self.auto_optimize_threshold = 85.0
+        self.auto_optimize_enabled = settings.get('auto_optimize', False)
+        self.auto_optimize_threshold = settings.get('auto_optimize_threshold', 85.0)
         
         # Create menu
+        auto_label = f"Auto-Optimize: {'On' if self.auto_optimize_enabled else 'Off'}"
         self.menu = [
             rumps.MenuItem("Open Dashboard", callback=self.open_dashboard),
             rumps.separator,
             rumps.MenuItem("Quick Purge", callback=self.quick_purge),
             rumps.MenuItem("Clear Caches", callback=self.clear_caches),
             rumps.separator,
-            rumps.MenuItem("Auto-Optimize: Off", callback=self.toggle_auto_optimize),
+            rumps.MenuItem(auto_label, callback=self.toggle_auto_optimize),
             rumps.separator,
             rumps.MenuItem("Quit", callback=self.quit_app)
         ]
@@ -646,11 +680,35 @@ class RAMOptimizerMenuBar(rumps.App):
         # Also update dashboard setting
         self.dashboard.auto_optimize.set(self.auto_optimize_enabled)
         
+        self.save_settings()
         rumps.notification(
             title="RAM Optimizer", 
             subtitle="Auto-Optimization", 
             message=f"Auto-optimization {'enabled' if self.auto_optimize_enabled else 'disabled'}"
         )
+
+    def load_settings(self):
+        """Load settings from JSON config file"""
+        try:
+            if os.path.exists(self.config_path):
+                with open(self.config_path, 'r') as f:
+                    settings = json.load(f)
+                return settings
+        except (json.JSONDecodeError, IOError):
+            pass
+        return {}
+
+    def save_settings(self):
+        """Save settings to JSON config file"""
+        settings = {
+            'auto_optimize': self.auto_optimize_enabled,
+            'auto_optimize_threshold': self.auto_optimize_threshold
+        }
+        try:
+            with open(self.config_path, 'w') as f:
+                json.dump(settings, f, indent=2)
+        except IOError:
+            pass
 
     def auto_optimize_memory(self):
         """Auto-optimize memory"""
