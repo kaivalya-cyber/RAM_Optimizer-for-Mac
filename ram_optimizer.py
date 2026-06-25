@@ -12,8 +12,9 @@ import json
 import os
 import tkinter as tk
 import tkinter.ttk as ttk
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 from datetime import datetime
+import csv
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from collections import deque
@@ -348,6 +349,20 @@ class RAMOptimizerDashboard:
             cursor='hand2'
         )
         self.optimize_button.pack(side=tk.LEFT, padx=10)
+        
+        self.export_button = tk.Button(
+            button_frame,
+            text="📊 Export CSV",
+            command=self.export_csv,
+            font=('Helvetica', 12, 'bold'),
+            bg='#2ecc71',
+            fg='white',
+            padx=20,
+            pady=10,
+            relief=tk.FLAT,
+            cursor='hand2'
+        )
+        self.export_button.pack(side=tk.LEFT, padx=10)
         
         # Auto-optimization settings
         auto_frame = tk.Frame(control_frame, bg='#2d2d2d')
@@ -706,6 +721,40 @@ class RAMOptimizerDashboard:
         except Exception as e:
             messagebox.showerror("Error", f"Error purging memory: {str(e)}")
             self.status_label.config(text=f"Error: {str(e)}")
+
+    def export_csv(self):
+        """Export memory history to CSV file"""
+        if len(self.memory_history) == 0:
+            messagebox.showinfo("No Data", "No memory history data to export yet. Wait for data collection.")
+            return
+        
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            initialfile=f"ram_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            title="Export Memory History"
+        )
+        
+        if not filepath:
+            return
+        
+        try:
+            with open(filepath, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(['Timestamp', 'Memory Usage (%)'])
+                
+                timestamps = list(self.timestamps)
+                memory_data = list(self.memory_history)
+                
+                for i in range(min(len(timestamps), len(memory_data))):
+                    writer.writerow([timestamps[i], f"{memory_data[i]:.1f}"])
+            
+            self.status_label.config(text=f"Exported {min(len(timestamps), len(memory_data))} records to CSV")
+            messagebox.showinfo("Export Complete", f"Memory history exported to:\n{filepath}")
+            self.log_action("CSV Export", f"{min(len(timestamps), len(memory_data))} records")
+        except Exception as e:
+            messagebox.showerror("Export Error", f"Failed to export CSV: {str(e)}")
+            self.status_label.config(text="CSV export failed")
 
     def clear_caches(self):
         """Clear system caches"""
