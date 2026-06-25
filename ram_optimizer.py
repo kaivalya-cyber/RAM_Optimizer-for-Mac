@@ -211,6 +211,14 @@ class RAMOptimizerDashboard:
         # Temperature Label
         self.temp_label = self.create_stat_label(stats_frame, "CPU Temp:", 11)
         
+        # Network labels
+        self.net_sent_label = self.create_stat_label(stats_frame, "Net Sent:", 12)
+        self.net_recv_label = self.create_stat_label(stats_frame, "Net Recv:", 13)
+        
+        # Track previous network counters for delta calculation
+        self._prev_net = psutil.net_io_counters()
+        self._prev_net_time = datetime.now().timestamp()
+        
         # Memory Pressure Indicator
         pressure_frame = tk.LabelFrame(
             main_frame, 
@@ -609,6 +617,18 @@ class RAMOptimizerDashboard:
             if self._temp_counter % 10 == 0:
                 threading.Thread(target=self._update_temperature, daemon=True).start()
             
+            # Update network stats
+            net = psutil.net_io_counters()
+            now = datetime.now().timestamp()
+            elapsed = now - self._prev_net_time
+            if elapsed > 0:
+                sent_delta = net.bytes_sent - self._prev_net.bytes_sent
+                recv_delta = net.bytes_recv - self._prev_net.bytes_recv
+                self._prev_net = net
+                self._prev_net_time = now
+                self.net_sent_label.config(text=self._format_bytes(sent_delta / elapsed) + "/s")
+                self.net_recv_label.config(text=self._format_bytes(recv_delta / elapsed) + "/s")
+            
             # Update memory pressure indicator
             self.update_pressure_indicator(mem.percent)
             
@@ -754,6 +774,18 @@ class RAMOptimizerDashboard:
         except Exception as e:
             messagebox.showerror("Error", f"Error purging memory: {str(e)}")
             self.status_label.config(text=f"Error: {str(e)}")
+
+    @staticmethod
+    def _format_bytes(b):
+        """Format bytes per second to human-readable string"""
+        if b >= 1024**3:
+            return f"{b / (1024**3):.1f} GB"
+        elif b >= 1024**2:
+            return f"{b / (1024**2):.1f} MB"
+        elif b >= 1024:
+            return f"{b / 1024:.1f} KB"
+        else:
+            return f"{b:.0f} B"
 
     def _update_temperature(self):
         """Update CPU temperature from macOS sensors"""
