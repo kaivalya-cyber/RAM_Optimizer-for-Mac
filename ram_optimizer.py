@@ -309,6 +309,22 @@ class RAMOptimizerDashboard:
         self.processes_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=10)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y, pady=10)
         
+        # Right-click context menu for process kill
+        self.process_context_menu = tk.Menu(self.root, tearoff=0, bg='#2d2d2d', fg='white',
+            activebackground='#ff6b6b', activeforeground='white', font=('Helvetica', 11))
+        self.process_context_menu.add_command(label="🔪 Kill Process", command=self.kill_selected_process)
+        
+        def show_context_menu(event):
+            selected = self.processes_tree.identify_row(event.y)
+            if selected:
+                self.processes_tree.selection_set(selected)
+                self.process_context_menu.post(event.x_root, event.y_root)
+        
+        self.processes_tree.bind("<Button-2>", show_context_menu)  # macOS right-click
+        self.processes_tree.bind("<Button-3>", show_context_menu)  # Windows/Linux right-click
+        if hasattr(self.processes_tree, 'bind'):
+            self.processes_tree.bind("<Control-Button-1>", show_context_menu)  # macOS Ctrl+click
+        
         # Control Buttons Frame
         control_frame = tk.LabelFrame(
             main_frame, 
@@ -842,6 +858,47 @@ class RAMOptimizerDashboard:
                             return
         except Exception:
             pass
+
+    def kill_selected_process(self):
+        """Kill the selected process in the Treeview"""
+        selected = self.processes_tree.selection()
+        if not selected:
+            return
+        
+        item = self.processes_tree.item(selected[0])
+        values = item['values']
+        if not values or len(values) < 2:
+            return
+        
+        pid = values[0]
+        name = values[1]
+        
+        confirm = messagebox.askyesno(
+            "Kill Process",
+            f"Are you sure you want to kill '{name}' (PID: {pid})?\n\nThis will force-terminate the process."
+        )
+        
+        if not confirm:
+            return
+        
+        try:
+            proc = psutil.Process(pid)
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except psutil.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=2)
+            
+            self.log_action(f"Killed Process", f"{name} (PID: {pid})")
+            self.status_label.config(text=f"Killed {name} (PID: {pid})")
+            messagebox.showinfo("Process Killed", f"Successfully killed '{name}' (PID: {pid})")
+        except psutil.NoSuchProcess:
+            messagebox.showwarning("Not Found", f"Process {pid} no longer exists.")
+        except psutil.AccessDenied:
+            messagebox.showerror("Access Denied", f"Permission denied to kill '{name}' (PID: {pid}).\nTry running with sudo.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to kill process: {str(e)}")
 
     def export_csv(self):
         """Export memory history to CSV file"""
