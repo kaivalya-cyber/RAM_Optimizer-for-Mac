@@ -92,6 +92,11 @@ class RAMOptimizerDashboard:
         self.available_memory_label = self.create_stat_label(stats_frame, "Available Memory:", 3)
         self.memory_percent_label = self.create_stat_label(stats_frame, "Memory Usage:", 4)
         
+        # Swap Memory Labels
+        self.swap_total_label = self.create_stat_label(stats_frame, "Swap Total:", 5)
+        self.swap_used_label = self.create_stat_label(stats_frame, "Swap Used:", 6)
+        self.swap_percent_label = self.create_stat_label(stats_frame, "Swap Usage:", 7)
+        
         # Memory Pressure Indicator
         pressure_frame = tk.LabelFrame(
             main_frame, 
@@ -301,6 +306,22 @@ class RAMOptimizerDashboard:
                 self.memory_percent_label.config(fg='#ffcc00')
             else:
                 self.memory_percent_label.config(fg='#ff6b6b')
+            
+            # Update swap memory labels
+            swap = psutil.swap_memory()
+            self.swap_total_label.config(text=f"{swap.total / (1024**3):.2f} GB")
+            self.swap_used_label.config(text=f"{swap.used / (1024**3):.2f} GB")
+            if swap.total > 0:
+                swap_pct = (swap.used / swap.total) * 100
+                self.swap_percent_label.config(text=f"{swap_pct:.1f}%")
+                if swap_pct < 10:
+                    self.swap_percent_label.config(fg='#00ff00')
+                elif swap_pct < 50:
+                    self.swap_percent_label.config(fg='#ffcc00')
+                else:
+                    self.swap_percent_label.config(fg='#ff6b6b')
+            else:
+                self.swap_percent_label.config(text="N/A")
             
             # Update memory pressure indicator
             self.update_pressure_indicator(mem.percent)
