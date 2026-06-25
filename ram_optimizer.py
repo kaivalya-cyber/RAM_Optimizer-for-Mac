@@ -28,6 +28,95 @@ class RAMOptimizerDashboard:
         self.auto_optimize_threshold = 85.0
         self.dashboard_open = False
         self.config_path = os.path.expanduser('~/.ram_optimizer_config.json')
+        self.log_path = os.path.expanduser('~/.ram_optimizer.log')
+
+    @staticmethod
+    def log_action(action, details=""):
+        """Log an optimization action to the log file"""
+        log_path = os.path.expanduser('~/.ram_optimizer.log')
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            mem = psutil.virtual_memory()
+            mem_info = f"[RAM {mem.percent:.1f}%]"
+        except Exception:
+            mem_info = ""
+        log_entry = f"{timestamp} {mem_info} {action}{' - ' + details if details else ''}\n"
+        try:
+            with open(log_path, 'a') as f:
+                f.write(log_entry)
+            # Truncate if too large (keep last ~5000 lines)
+            if os.path.getsize(log_path) > 500_000:
+                with open(log_path, 'r') as f:
+                    lines = f.readlines()
+                with open(log_path, 'w') as f:
+                    f.writelines(lines[-2000:])
+        except IOError:
+            pass
+
+    @staticmethod
+    def view_logs(parent_root):
+        """Open a window to view optimization logs"""
+        log_path = os.path.expanduser('~/.ram_optimizer.log')
+        
+        log_window = tk.Toplevel(parent_root)
+        log_window.title("Optimization Action Logs")
+        log_window.geometry("800x500")
+        log_window.configure(bg='#1e1e1e')
+        
+        # Title
+        title = tk.Label(log_window, text="📋 Optimization Action Logs",
+            font=('Helvetica', 18, 'bold'), bg='#1e1e1e', fg='#00ff00')
+        title.pack(pady=15)
+        
+        # Text area with scrollbar
+        text_frame = tk.Frame(log_window, bg='#1e1e1e')
+        text_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        
+        log_text = tk.Text(text_frame, bg='#2d2d2d', fg='#cccccc',
+            font=('Courier', 11), wrap=tk.NONE, insertbackground='white')
+        log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        scrollbar_y = tk.Scrollbar(text_frame, orient=tk.VERTICAL, command=log_text.yview)
+        scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
+        log_text.config(yscrollcommand=scrollbar_y.set)
+        
+        # Load log content
+        try:
+            if os.path.exists(log_path):
+                with open(log_path, 'r') as f:
+                    content = f.read()
+                log_text.insert(tk.END, content)
+                log_text.see(tk.END)
+            else:
+                log_text.insert(tk.END, "No logs yet. Run some optimization actions to populate the log.")
+        except IOError:
+            log_text.insert(tk.END, "Error reading log file.")
+        
+        log_text.config(state=tk.DISABLED)
+        
+        # Close button
+        close_btn = tk.Button(log_window, text="Close", command=log_window.destroy,
+            font=('Helvetica', 12, 'bold'), bg='#45b7d1', fg='white',
+            padx=30, pady=8, relief=tk.FLAT, cursor='hand2')
+        close_btn.pack(pady=15)
+        
+        # Clear logs button
+        def clear_logs():
+            if messagebox.askyesno("Clear Logs", "Are you sure you want to clear all logs?"):
+                try:
+                    with open(log_path, 'w') as f:
+                        f.write('')
+                    log_text.config(state=tk.NORMAL)
+                    log_text.delete('1.0', tk.END)
+                    log_text.insert(tk.END, "Logs cleared at " + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\n")
+                    log_text.config(state=tk.DISABLED)
+                except IOError:
+                    pass
+        
+        clear_btn = tk.Button(log_window, text="🗑️ Clear Logs", command=clear_logs,
+            font=('Helvetica', 11, 'bold'), bg='#ff6b6b', fg='white',
+            padx=20, pady=6, relief=tk.FLAT, cursor='hand2')
+        clear_btn.pack(pady=5)
 
     def show_dashboard(self):
         """Show the dashboard window"""
@@ -605,6 +694,7 @@ class RAMOptimizerDashboard:
             )
             
             if result.returncode == 0:
+                self.log_action("Memory Purged", "Success")
                 messagebox.showinfo("Success", "Memory purged successfully!")
                 self.status_label.config(text="Memory purged successfully")
             else:
@@ -634,6 +724,7 @@ class RAMOptimizerDashboard:
             
             messagebox.showinfo("Success", "Caches cleared successfully!")
             self.status_label.config(text="Caches cleared successfully")
+            self.log_action("Caches Cleared", "Success")
         except Exception as e:
             messagebox.showerror("Error", f"Error clearing caches: {str(e)}")
             self.status_label.config(text=f"Error: {str(e)}")
@@ -654,6 +745,7 @@ class RAMOptimizerDashboard:
             
             messagebox.showinfo("Success", "Full optimization completed!")
             self.status_label.config(text="Full optimization completed")
+            self.log_action("Full Optimization", "Success")
         except Exception as e:
             messagebox.showerror("Error", f"Error during optimization: {str(e)}")
             self.status_label.config(text=f"Error: {str(e)}")
@@ -662,6 +754,7 @@ class RAMOptimizerDashboard:
         """Auto-optimize memory when threshold is exceeded"""
         try:
             subprocess.run(['sudo', 'purge'], capture_output=True, timeout=30)
+            self.log_action("Auto-Optimization", "Purge executed")
             if self.status_label:
                 self.status_label.config(text="Auto-optimization completed")
         except Exception as e:
@@ -697,6 +790,8 @@ class RAMOptimizerMenuBar(rumps.App):
             rumps.separator,
             rumps.MenuItem("Quick Purge", callback=self.quick_purge),
             rumps.MenuItem("Clear Caches", callback=self.clear_caches),
+            rumps.separator,
+            rumps.MenuItem("View Logs", callback=self.view_logs_menu),
             rumps.separator,
             rumps.MenuItem(auto_label, callback=self.toggle_auto_optimize),
             rumps.separator,
@@ -807,6 +902,22 @@ class RAMOptimizerMenuBar(rumps.App):
     def quit_app(self, sender):
         """Quit the application"""
         rumps.quit_application()
+
+    def view_logs_menu(self, sender):
+        """View optimization logs from the menu bar"""
+        # Create a temporary root to hold the Toplevel
+        import tkinter as tk
+        temp_root = tk.Tk()
+        temp_root.withdraw()
+        RAMOptimizerDashboard.view_logs(temp_root)
+        # Keep the temp root alive while the log window is open
+        def check_log_window():
+            try:
+                temp_root.update()
+                temp_root.after(500, check_log_window)
+            except tk.TclError:
+                pass
+        threading.Thread(target=check_log_window, daemon=True).start()
 
     def _is_on_battery(self):
         """Check if the system is running on battery power"""
