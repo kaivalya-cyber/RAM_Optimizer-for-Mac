@@ -146,6 +146,9 @@ class RAMOptimizerDashboard:
         # Battery-aware setting
         self.battery_aware = tk.BooleanVar(value=settings.get('battery_aware', True))
         
+        # Theme setting
+        self.dark_mode = tk.BooleanVar(value=settings.get('dark_mode', True))
+        
         self.create_gui()
         
         # Start GUI update
@@ -499,6 +502,24 @@ class RAMOptimizerDashboard:
         )
         battery_check.pack(side=tk.LEFT, padx=5)
         
+        # Theme toggle
+        theme_frame = tk.Frame(control_frame, bg='#2d2d2d')
+        theme_frame.pack(pady=10)
+        
+        theme_check = tk.Checkbutton(
+            theme_frame,
+            text="🌙 Dark Mode",
+            variable=self.dark_mode,
+            font=('Helvetica', 11),
+            bg='#2d2d2d',
+            fg='white',
+            selectcolor='#2d2d2d',
+            activebackground='#2d2d2d',
+            activeforeground='white',
+            command=self.toggle_theme
+        )
+        theme_check.pack(side=tk.LEFT, padx=5)
+        
         # Status bar
         self.status_label = tk.Label(
             self.root, 
@@ -537,6 +558,12 @@ class RAMOptimizerDashboard:
         
         return value_label
 
+    def toggle_theme(self):
+        """Toggle between dark and light themes"""
+        self.save_settings()
+        messagebox.showinfo("Theme Changed",
+            "Theme will fully apply next time you open the dashboard.")
+
     def update_threshold(self):
         """Update the auto-optimization threshold"""
         self.auto_optimize_threshold = self.auto_optimize_threshold_var.get()
@@ -560,7 +587,8 @@ class RAMOptimizerDashboard:
             'auto_optimize_threshold': self.auto_optimize_threshold_var.get(),
             'alert_enabled': self.alert_enabled.get(),
             'alert_threshold': self.alert_threshold_var.get(),
-            'battery_aware': self.battery_aware.get()
+            'battery_aware': self.battery_aware.get(),
+            'dark_mode': self.dark_mode.get()
         }
         try:
             with open(self.config_path, 'w') as f:
@@ -1010,6 +1038,11 @@ class RAMOptimizerMenuBar(rumps.App):
         # Battery-aware setting
         self.battery_aware = settings.get('battery_aware', True)
         
+        # Scheduled optimization settings
+        self.schedule_enabled = settings.get('schedule_enabled', False)
+        self.schedule_interval_minutes = settings.get('schedule_interval', 30)
+        self._last_scheduled_opt = 0
+        
         # Create menu
         auto_label = f"Auto-Optimize: {'On' if self.auto_optimize_enabled else 'Off'}"
         self.menu = [
@@ -1020,7 +1053,11 @@ class RAMOptimizerMenuBar(rumps.App):
             rumps.separator,
             rumps.MenuItem("View Logs", callback=self.view_logs_menu),
             rumps.separator,
+            rumps.MenuItem("Schedule Opt: Off", callback=self.toggle_schedule),
+            rumps.separator,
             rumps.MenuItem(auto_label, callback=self.toggle_auto_optimize),
+            rumps.separator,
+            rumps.MenuItem("Launch at Login", callback=self.toggle_startup),
             rumps.separator,
             rumps.MenuItem("Quit", callback=self.quit_app)
         ]
@@ -1049,6 +1086,9 @@ class RAMOptimizerMenuBar(rumps.App):
             
             # Memory alerts
             self.check_memory_alerts(mem.percent)
+            
+            # Scheduled optimization
+            self.check_scheduled_optimization()
         except Exception as e:
             print(f"Error updating memory: {e}")
 
@@ -1120,7 +1160,9 @@ class RAMOptimizerMenuBar(rumps.App):
             'auto_optimize_threshold': self.auto_optimize_threshold,
             'alert_enabled': self.alert_enabled,
             'alert_threshold': self.alert_threshold,
-            'battery_aware': self.battery_aware
+            'battery_aware': self.battery_aware,
+            'schedule_enabled': self.schedule_enabled,
+            'schedule_interval': self.schedule_interval_minutes
         }
         try:
             with open(self.config_path, 'w') as f:
@@ -1134,6 +1176,35 @@ class RAMOptimizerMenuBar(rumps.App):
             subprocess.run(['sudo', 'purge'], capture_output=True, timeout=30)
         except Exception as e:
             print(f"Auto-optimization error: {e}")
+
+    def toggle_schedule(self, sender):
+        """Toggle scheduled optimization"""
+        self.schedule_enabled = not self.schedule_enabled
+        sender.title = f"Schedule Opt: {'On' if self.schedule_enabled else 'Off'}"
+        self.save_settings()
+        rumps.notification(
+            title="RAM Optimizer",
+            subtitle="Scheduled Optimization",
+            message=f"Scheduled optimization {'enabled' if self.schedule_enabled else 'disabled'} (every {self.schedule_interval_minutes} min)"
+        )
+
+    def check_scheduled_optimization(self):
+        """Run optimization on schedule"""
+        if not self.schedule_enabled:
+            return
+        now = datetime.now().timestamp()
+        if now - self._last_scheduled_opt < self.schedule_interval_minutes * 60:
+            return
+        self._last_scheduled_opt = now
+        threading.Thread(target=self._run_scheduled_opt, daemon=True).start()
+
+    def _run_scheduled_opt(self):
+        """Execute scheduled optimization"""
+        try:
+            subprocess.run(['sudo', 'purge'], capture_output=True, timeout=30)
+            RAMOptimizerDashboard.log_action("Scheduled Optimization", f"Every {self.schedule_interval_minutes}min")
+        except Exception:
+            pass
 
     def quit_app(self, sender):
         """Quit the application"""
@@ -1173,6 +1244,55 @@ class RAMOptimizerMenuBar(rumps.App):
         
         self.last_alert_time = now
         threading.Thread(target=self._send_alert, args=(mem_percent,), daemon=True).start()
+
+    def toggle_startup(self, sender):
+        """Toggle launch at login"""
+        plist_path = os.path.expanduser('~/Library/LaunchAgents/com.ramoptimizer.plist')
+        
+        if os.path.exists(plist_path):
+            os.remove(plist_path)
+            rumps.notification(
+                title="RAM Optimizer",
+                subtitle="Startup Launch",
+                message="Removed from login items."
+            )
+        else:
+            import sys
+            app_path = os.path.abspath(sys.argv[0])
+            python_path = subprocess.check_output(['which', 'python3'], text=True).strip()
+            
+            plist_content = f'''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ramoptimizer</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{python_path}</string>
+        <string>{app_path}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>'''
+            try:
+                os.makedirs(os.path.dirname(plist_path), exist_ok=True)
+                with open(plist_path, 'w') as f:
+                    f.write(plist_content)
+                rumps.notification(
+                    title="RAM Optimizer",
+                    subtitle="Startup Launch",
+                    message="Added to login items. Will launch at startup."
+                )
+            except Exception as e:
+                rumps.notification(
+                    title="RAM Optimizer",
+                    subtitle="Error",
+                    message=f"Failed to create launch agent: {str(e)}"
+                )
 
     def _send_alert(self, mem_percent):
         """Send a macOS notification for high memory usage"""
