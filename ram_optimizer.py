@@ -204,6 +204,10 @@ class RAMOptimizerDashboard:
         # CPU Usage Label
         self.cpu_percent_label = self.create_stat_label(stats_frame, "CPU Usage:", 8)
         
+        # System Info Labels
+        self.uptime_label = self.create_stat_label(stats_frame, "System Uptime:", 9)
+        self.boot_time_label = self.create_stat_label(stats_frame, "Boot Time:", 10)
+        
         # Memory Pressure Indicator
         pressure_frame = tk.LabelFrame(
             main_frame, 
@@ -585,6 +589,15 @@ class RAMOptimizerDashboard:
                 self.cpu_percent_label.config(fg='#ffcc00')
             else:
                 self.cpu_percent_label.config(fg='#ff6b6b')
+            
+            # Update system uptime
+            boot_time = psutil.boot_time()
+            uptime_seconds = datetime.now().timestamp() - boot_time
+            days, rem = divmod(int(uptime_seconds), 86400)
+            hours, rem = divmod(rem, 3600)
+            minutes, seconds = divmod(rem, 60)
+            self.uptime_label.config(text=f"{days}d {hours}h {minutes}m")
+            self.boot_time_label.config(text=datetime.fromtimestamp(boot_time).strftime("%Y-%m-%d %H:%M"))
             
             # Update memory pressure indicator
             self.update_pressure_indicator(mem.percent)
