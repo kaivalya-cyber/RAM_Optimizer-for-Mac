@@ -208,6 +208,9 @@ class RAMOptimizerDashboard:
         self.uptime_label = self.create_stat_label(stats_frame, "System Uptime:", 9)
         self.boot_time_label = self.create_stat_label(stats_frame, "Boot Time:", 10)
         
+        # Temperature Label
+        self.temp_label = self.create_stat_label(stats_frame, "CPU Temp:", 11)
+        
         # Memory Pressure Indicator
         pressure_frame = tk.LabelFrame(
             main_frame, 
@@ -599,6 +602,13 @@ class RAMOptimizerDashboard:
             self.uptime_label.config(text=f"{days}d {hours}h {minutes}m")
             self.boot_time_label.config(text=datetime.fromtimestamp(boot_time).strftime("%Y-%m-%d %H:%M"))
             
+            # Update temperature (every 10 seconds to avoid expensive calls)
+            if not hasattr(self, '_temp_counter'):
+                self._temp_counter = 0
+            self._temp_counter += 1
+            if self._temp_counter % 10 == 0:
+                threading.Thread(target=self._update_temperature, daemon=True).start()
+            
             # Update memory pressure indicator
             self.update_pressure_indicator(mem.percent)
             
@@ -744,6 +754,62 @@ class RAMOptimizerDashboard:
         except Exception as e:
             messagebox.showerror("Error", f"Error purging memory: {str(e)}")
             self.status_label.config(text=f"Error: {str(e)}")
+
+    def _update_temperature(self):
+        """Update CPU temperature from macOS sensors"""
+        try:
+            # Try powermetrics first (macOS)
+            result = subprocess.run(
+                ['sudo', 'powermetrics', '--samplers', 'smc', '-n', '1', '-i', '0'],
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0:
+                temp_c = None
+                for line in result.stdout.split('\n'):
+                    if 'CPU die temperature' in line or 'CPU temperature' in line:
+                        parts = line.split()
+                        for p in parts:
+                            try:
+                                val = float(p)
+                                temp_c = val
+                                break
+                            except ValueError:
+                                continue
+                if temp_c is not None and self.root and self.dashboard_open:
+                    def _set_temp():
+                        self.temp_label.config(text=f"{temp_c:.1f}°C")
+                        if temp_c < 60:
+                            self.temp_label.config(fg='#00ff00')
+                        elif temp_c < 80:
+                            self.temp_label.config(fg='#ffcc00')
+                        else:
+                            self.temp_label.config(fg='#ff6b6b')
+                    self.root.after(0, _set_temp)
+                return
+        except Exception:
+            pass
+        
+        # Fallback: try psutil sensors_temperatures
+        try:
+            temps = psutil.sensors_temperatures()
+            if temps:
+                for name, entries in temps.items():
+                    for entry in entries:
+                        if entry.current > 0:
+                            temp_c = entry.current
+                            if self.root and self.dashboard_open:
+                                def _set_temp():
+                                    self.temp_label.config(text=f"{temp_c:.1f}°C")
+                                    if temp_c < 60:
+                                        self.temp_label.config(fg='#00ff00')
+                                    elif temp_c < 80:
+                                        self.temp_label.config(fg='#ffcc00')
+                                    else:
+                                        self.temp_label.config(fg='#ff6b6b')
+                                self.root.after(0, _set_temp)
+                            return
+        except Exception:
+            pass
 
     def export_csv(self):
         """Export memory history to CSV file"""
