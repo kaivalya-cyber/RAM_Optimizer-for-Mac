@@ -9,6 +9,7 @@ import psutil
 import subprocess
 import threading
 import tkinter as tk
+import tkinter.ttk as ttk
 from tkinter import messagebox
 from datetime import datetime
 import matplotlib.pyplot as plt
@@ -35,7 +36,7 @@ class RAMOptimizerDashboard:
         self.dashboard_open = True
         self.root = tk.Tk()
         self.root.title("RAM Optimizer Dashboard")
-        self.root.geometry("900x700")
+        self.root.geometry("900x900")
         self.root.configure(bg='#1e1e1e')
         
         # Auto-optimization settings
@@ -145,6 +146,50 @@ class RAMOptimizerDashboard:
         
         self.canvas = FigureCanvasTkAgg(self.fig, master=graph_frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Top Processes Frame
+        processes_frame = tk.LabelFrame(
+            main_frame,
+            text="Top Memory-Consuming Processes",
+            font=('Helvetica', 14, 'bold'),
+            bg='#2d2d2d',
+            fg='#ffffff'
+        )
+        processes_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+        
+        # Treeview style
+        style = ttk.Style()
+        style.theme_use('default')
+        style.configure("Treeview",
+            background="#1e1e1e",
+            foreground="white",
+            fieldbackground="#1e1e1e",
+            rowheight=25,
+            font=('Helvetica', 10)
+        )
+        style.configure("Treeview.Heading",
+            background="#2d2d2d",
+            foreground="white",
+            font=('Helvetica', 11, 'bold')
+        )
+        style.map('Treeview', background=[('selected', '#45b7d1')])
+        
+        columns = ('pid', 'name', 'memory_pct', 'memory_mb')
+        self.processes_tree = ttk.Treeview(processes_frame, columns=columns, show='headings', height=10)
+        self.processes_tree.heading('pid', text='PID')
+        self.processes_tree.heading('name', text='Process Name')
+        self.processes_tree.heading('memory_pct', text='Memory %')
+        self.processes_tree.heading('memory_mb', text='Memory (MB)')
+        self.processes_tree.column('pid', width=70, anchor='center')
+        self.processes_tree.column('name', width=300, anchor='w')
+        self.processes_tree.column('memory_pct', width=120, anchor='center')
+        self.processes_tree.column('memory_mb', width=120, anchor='center')
+        
+        scrollbar = ttk.Scrollbar(processes_frame, orient=tk.VERTICAL, command=self.processes_tree.yview)
+        self.processes_tree.configure(yscrollcommand=scrollbar.set)
+        
+        self.processes_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=10)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y, pady=10)
         
         # Control Buttons Frame
         control_frame = tk.LabelFrame(
@@ -344,6 +389,9 @@ class RAMOptimizerDashboard:
             self.timestamps.append(datetime.now().strftime("%H:%M:%S"))
             self.update_graph()
             
+            # Update top processes
+            self.update_processes()
+            
             # Check auto-optimization
             if self.auto_optimize.get() and mem.percent > self.auto_optimize_threshold:
                 threading.Thread(target=self.auto_optimize_memory, daemon=True).start()
@@ -408,6 +456,39 @@ class RAMOptimizerDashboard:
             self.ax.set_xticklabels([self.timestamps[i] if i < len(self.timestamps) else '' for i in range(0, len(self.timestamps), 10)], rotation=45, color='white')
         
         self.canvas.draw()
+
+    def update_processes(self):
+        """Update the top processes treeview"""
+        # Clear existing items
+        for item in self.processes_tree.get_children():
+            self.processes_tree.delete(item)
+        
+        processes = []
+        for proc in psutil.process_iter(['pid', 'name', 'memory_percent', 'memory_info']):
+            try:
+                info = proc.info
+                mem_mb = info['memory_info'].rss / (1024 * 1024)
+                processes.append((
+                    info['pid'],
+                    info['name'] or 'Unknown',
+                    info['memory_percent'] or 0.0,
+                    mem_mb
+                ))
+            except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError):
+                continue
+        
+        # Sort by memory usage (descending) and take top 15
+        processes.sort(key=lambda x: x[3], reverse=True)
+        top_processes = processes[:15]
+        
+        # Insert into treeview
+        for pid, name, mem_pct, mem_mb in top_processes:
+            self.processes_tree.insert('', tk.END, values=(
+                pid,
+                name[:40] if len(name) > 40 else name,
+                f"{mem_pct:.1f}",
+                f"{mem_mb:.1f}"
+            ))
 
     def purge_memory(self):
         """Purge memory using sudo purge command"""
