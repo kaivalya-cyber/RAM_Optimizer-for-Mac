@@ -10,6 +10,7 @@ import subprocess
 import threading
 import json
 import os
+import sys
 import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter import messagebox, filedialog
@@ -560,41 +561,79 @@ class RAMOptimizerDashboard:
 
     def toggle_theme(self):
         """Toggle between dark and light themes"""
+        dark = self.dark_mode.get()
+        if not hasattr(self, '_widget_registry'):
+            self._widget_registry = []
+        
+        if dark:
+            self._apply_dark_theme()
+        else:
+            self._apply_light_theme()
         self.save_settings()
-        messagebox.showinfo("Theme Changed",
-            "Theme will fully apply next time you open the dashboard.")
 
-    def update_threshold(self):
-        """Update the auto-optimization threshold"""
-        self.auto_optimize_threshold = self.auto_optimize_threshold_var.get()
-        self.save_settings()
-
-    def load_settings(self):
-        """Load settings from JSON config file"""
+    def _apply_dark_theme(self):
+        """Apply dark color theme to all widgets"""
+        for widget_info in self._widget_registry:
+            widget, attr_map = widget_info
+            try:
+                for attr, value in attr_map['dark'].items():
+                    widget.config(**{attr: value})
+            except Exception:
+                pass
         try:
-            if os.path.exists(self.config_path):
-                with open(self.config_path, 'r') as f:
-                    settings = json.load(f)
-                return settings
-        except (json.JSONDecodeError, IOError):
+            self.root.configure(bg='#1e1e1e')
+        except Exception:
             pass
-        return {}
 
-    def save_settings(self):
-        """Save settings to JSON config file"""
-        settings = {
-            'auto_optimize': self.auto_optimize.get(),
-            'auto_optimize_threshold': self.auto_optimize_threshold_var.get(),
-            'alert_enabled': self.alert_enabled.get(),
-            'alert_threshold': self.alert_threshold_var.get(),
-            'battery_aware': self.battery_aware.get(),
-            'dark_mode': self.dark_mode.get()
-        }
+    def _apply_light_theme(self):
+        """Apply light color theme to all widgets"""
+        for widget_info in self._widget_registry:
+            widget, attr_map = widget_info
+            try:
+                for attr, value in attr_map['light'].items():
+                    widget.config(**{attr: value})
+            except Exception:
+                pass
         try:
-            with open(self.config_path, 'w') as f:
-                json.dump(settings, f, indent=2)
-        except IOError:
+            self.root.configure(bg='#f0f0f0')
+        except Exception:
             pass
+
+    def _register_widget(self, widget, dark_attrs, light_attrs):
+        """Register a widget for theme switching"""
+        if not hasattr(self, '_widget_registry'):
+            self._widget_registry = []
+        self._widget_registry.append((widget, {'dark': dark_attrs, 'light': light_attrs}))
+
+    def create_stat_label(self, parent, text, row):
+        """Create a statistic label with theme support"""
+        frame = tk.Frame(parent, bg='#2d2d2d')
+        frame.pack(fill=tk.X, padx=10, pady=5)
+        self._register_widget(frame, {'bg': '#2d2d2d'}, {'bg': '#ffffff'})
+
+        label = tk.Label(
+            frame,
+            text=text,
+            font=('Helvetica', 11),
+            bg='#2d2d2d',
+            fg='#aaaaaa',
+            width=20,
+            anchor='w'
+        )
+        label.pack(side=tk.LEFT)
+        self._register_widget(label, {'bg': '#2d2d2d', 'fg': '#aaaaaa'}, {'bg': '#ffffff', 'fg': '#666666'})
+
+        value_label = tk.Label(
+            frame,
+            text="---",
+            font=('Helvetica', 11, 'bold'),
+            bg='#2d2d2d',
+            fg='#00ff00'
+        )
+        value_label.pack(side=tk.LEFT)
+        self._register_widget(value_label, {'bg': '#2d2d2d', 'fg': '#00ff00'}, {'bg': '#ffffff', 'fg': '#007700'})
+
+        return value_label
 
     def update_gui(self):
         """Update the GUI with current memory stats"""
@@ -661,17 +700,18 @@ class RAMOptimizerDashboard:
             if self._temp_counter % 10 == 0:
                 threading.Thread(target=self._update_temperature, daemon=True).start()
             
-            # Update network stats
-            net = psutil.net_io_counters()
-            now = datetime.now().timestamp()
-            elapsed = now - self._prev_net_time
-            if elapsed > 0:
-                sent_delta = net.bytes_sent - self._prev_net.bytes_sent
-                recv_delta = net.bytes_recv - self._prev_net.bytes_recv
-                self._prev_net = net
-                self._prev_net_time = now
-                self.net_sent_label.config(text=self._format_bytes(sent_delta / elapsed) + "/s")
-                self.net_recv_label.config(text=self._format_bytes(recv_delta / elapsed) + "/s")
+            # Update network stats (skip first reading to avoid spike)
+            if hasattr(self, '_prev_net'):
+                net = psutil.net_io_counters()
+                now = datetime.now().timestamp()
+                elapsed = now - self._prev_net_time
+                if elapsed > 0.5:
+                    sent_delta = net.bytes_sent - self._prev_net.bytes_sent
+                    recv_delta = net.bytes_recv - self._prev_net.bytes_recv
+                    self._prev_net = net
+                    self._prev_net_time = now
+                    self.net_sent_label.config(text=self._format_bytes(sent_delta / elapsed) + "/s")
+                    self.net_recv_label.config(text=self._format_bytes(recv_delta / elapsed) + "/s")
             
             # Update memory pressure indicator
             self.update_pressure_indicator(mem.percent)
@@ -833,59 +873,38 @@ class RAMOptimizerDashboard:
 
     def _update_temperature(self):
         """Update CPU temperature from macOS sensors"""
-        try:
-            # Try powermetrics first (macOS)
-            result = subprocess.run(
-                ['sudo', 'powermetrics', '--samplers', 'smc', '-n', '1', '-i', '0'],
-                capture_output=True, text=True, timeout=10
-            )
-            if result.returncode == 0:
-                temp_c = None
-                for line in result.stdout.split('\n'):
-                    if 'CPU die temperature' in line or 'CPU temperature' in line:
-                        parts = line.split()
-                        for p in parts:
-                            try:
-                                val = float(p)
-                                temp_c = val
-                                break
-                            except ValueError:
-                                continue
-                if temp_c is not None and self.root and self.dashboard_open:
-                    def _set_temp():
-                        self.temp_label.config(text=f"{temp_c:.1f}°C")
-                        if temp_c < 60:
-                            self.temp_label.config(fg='#00ff00')
-                        elif temp_c < 80:
-                            self.temp_label.config(fg='#ffcc00')
-                        else:
-                            self.temp_label.config(fg='#ff6b6b')
-                    self.root.after(0, _set_temp)
-                return
-        except Exception:
-            pass
+        temp_c = None
         
-        # Fallback: try psutil sensors_temperatures
+        # Try psutil sensors first (no sudo needed)
         try:
             temps = psutil.sensors_temperatures()
             if temps:
-                for name, entries in temps.items():
+                for entries in temps.values():
                     for entry in entries:
                         if entry.current > 0:
                             temp_c = entry.current
-                            if self.root and self.dashboard_open:
-                                def _set_temp():
-                                    self.temp_label.config(text=f"{temp_c:.1f}°C")
-                                    if temp_c < 60:
-                                        self.temp_label.config(fg='#00ff00')
-                                    elif temp_c < 80:
-                                        self.temp_label.config(fg='#ffcc00')
-                                    else:
-                                        self.temp_label.config(fg='#ff6b6b')
-                                self.root.after(0, _set_temp)
-                            return
+                            break
+                    if temp_c:
+                        break
         except Exception:
             pass
+        
+        if temp_c is not None and self.root and self.dashboard_open:
+            self._set_temp_display(temp_c)
+
+    def _set_temp_display(self, temp_c):
+        """Update the temperature label with color coding"""
+        def _set():
+            if not self.dashboard_open or not self.root:
+                return
+            self.temp_label.config(text=f"{temp_c:.1f}°C")
+            if temp_c < 60:
+                self.temp_label.config(fg='#00ff00')
+            elif temp_c < 80:
+                self.temp_label.config(fg='#ffcc00')
+            else:
+                self.temp_label.config(fg='#ff6b6b')
+        self.root.after(0, _set)
 
     def kill_selected_process(self):
         """Kill the selected process in the Treeview"""
@@ -1259,7 +1278,10 @@ class RAMOptimizerMenuBar(rumps.App):
         else:
             import sys
             app_path = os.path.abspath(sys.argv[0])
-            python_path = subprocess.check_output(['which', 'python3'], text=True).strip()
+            try:
+                python_path = subprocess.check_output(['which', 'python3'], text=True).strip()
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                python_path = sys.executable
             
             plist_content = f'''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
