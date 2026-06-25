@@ -525,11 +525,11 @@ class RAMOptimizerDashboard:
     def save_settings(self):
         """Save settings to JSON config file"""
         settings = {
-            'auto_optimize': self.auto_optimize.get() if hasattr(self, 'auto_optimize') else False,
-            'auto_optimize_threshold': self.auto_optimize_threshold_var.get() if hasattr(self, 'auto_optimize_threshold_var') else 85.0,
-            'alert_enabled': self.alert_enabled.get() if hasattr(self, 'alert_enabled') else False,
-            'alert_threshold': self.alert_threshold_var.get() if hasattr(self, 'alert_threshold_var') else 80.0,
-            'battery_aware': self.battery_aware.get() if hasattr(self, 'battery_aware') else True
+            'auto_optimize': self.auto_optimize.get(),
+            'auto_optimize_threshold': self.auto_optimize_threshold_var.get(),
+            'alert_enabled': self.alert_enabled.get(),
+            'alert_threshold': self.alert_threshold_var.get(),
+            'battery_aware': self.battery_aware.get()
         }
         try:
             with open(self.config_path, 'w') as f:
@@ -576,8 +576,8 @@ class RAMOptimizerDashboard:
             else:
                 self.swap_percent_label.config(text="N/A")
             
-            # Update CPU usage
-            cpu_pct = psutil.cpu_percent(interval=None)
+            # Update CPU usage (read from shared cache set by MenuBar timer)
+            cpu_pct = self._cached_cpu_pct if hasattr(self, '_cached_cpu_pct') else 0
             self.cpu_percent_label.config(text=f"{cpu_pct:.1f}%")
             if cpu_pct < 50:
                 self.cpu_percent_label.config(fg='#00ff00')
@@ -594,8 +594,12 @@ class RAMOptimizerDashboard:
             self.timestamps.append(datetime.now().strftime("%H:%M:%S"))
             self.update_graph()
             
-            # Update top processes
-            self.update_processes()
+            # Update top processes (every 5 seconds to avoid UI lag)
+            if not hasattr(self, '_process_update_counter'):
+                self._process_update_counter = 0
+            self._process_update_counter += 1
+            if self._process_update_counter % 5 == 0:
+                threading.Thread(target=self.update_processes, daemon=True).start()
             
             # Check auto-optimization
             if self.auto_optimize.get() and mem.percent > self.auto_optimize_threshold:
@@ -663,10 +667,9 @@ class RAMOptimizerDashboard:
         self.canvas.draw()
 
     def update_processes(self):
-        """Update the top processes treeview"""
-        # Clear existing items
-        for item in self.processes_tree.get_children():
-            self.processes_tree.delete(item)
+        """Update the top processes treeview (runs in background thread)"""
+        if not self.dashboard_open or not self.root:
+            return
         
         processes = []
         for proc in psutil.process_iter(['pid', 'name', 'memory_percent', 'memory_info']):
@@ -686,14 +689,21 @@ class RAMOptimizerDashboard:
         processes.sort(key=lambda x: x[3], reverse=True)
         top_processes = processes[:15]
         
-        # Insert into treeview
-        for pid, name, mem_pct, mem_mb in top_processes:
-            self.processes_tree.insert('', tk.END, values=(
-                pid,
-                name[:40] if len(name) > 40 else name,
-                f"{mem_pct:.1f}",
-                f"{mem_mb:.1f}"
-            ))
+        # Update treeview on the main thread
+        def _update_tree():
+            if not self.dashboard_open or not self.root:
+                return
+            for item in self.processes_tree.get_children():
+                self.processes_tree.delete(item)
+            for pid, name, mem_pct, mem_mb in top_processes:
+                self.processes_tree.insert('', tk.END, values=(
+                    pid,
+                    name[:40] if len(name) > 40 else name,
+                    f"{mem_pct:.1f}",
+                    f"{mem_mb:.1f}"
+                ))
+        if self.root:
+            self.root.after(0, _update_tree)
 
     def purge_memory(self):
         """Purge memory using sudo purge command"""
@@ -854,6 +864,15 @@ class RAMOptimizerMenuBar(rumps.App):
             mem = psutil.virtual_memory()
             cpu_pct = psutil.cpu_percent(interval=None)
             self.title = f"RAM {mem.percent:.0f}% | CPU {cpu_pct:.0f}%"
+            # Cache CPU for dashboard to read
+            self.dashboard._cached_cpu_pct = cpu_pct
+            
+            # Sync alert and battery settings from dashboard
+            if hasattr(self.dashboard, 'alert_enabled'):
+                self.alert_enabled = self.dashboard.alert_enabled.get()
+                self.alert_threshold = self.dashboard.alert_threshold_var.get()
+            if hasattr(self.dashboard, 'battery_aware'):
+                self.battery_aware = self.dashboard.battery_aware.get()
             
             # Auto-optimize if enabled (with battery check)
             if self.auto_optimize_enabled and mem.percent > self.auto_optimize_threshold:
@@ -954,19 +973,12 @@ class RAMOptimizerMenuBar(rumps.App):
 
     def view_logs_menu(self, sender):
         """View optimization logs from the menu bar"""
-        # Create a temporary root to hold the Toplevel
-        import tkinter as tk
-        temp_root = tk.Tk()
-        temp_root.withdraw()
-        RAMOptimizerDashboard.view_logs(temp_root)
-        # Keep the temp root alive while the log window is open
-        def check_log_window():
-            try:
-                temp_root.update()
-                temp_root.after(500, check_log_window)
-            except tk.TclError:
-                pass
-        threading.Thread(target=check_log_window, daemon=True).start()
+        def _run_log_viewer():
+            temp_root = tk.Tk()
+            temp_root.withdraw()
+            RAMOptimizerDashboard.view_logs(temp_root)
+            temp_root.mainloop()
+        threading.Thread(target=_run_log_viewer, daemon=True).start()
 
     def _is_on_battery(self):
         """Check if the system is running on battery power"""
