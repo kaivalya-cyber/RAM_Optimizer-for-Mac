@@ -97,6 +97,9 @@ class RAMOptimizerDashboard:
         self.swap_used_label = self.create_stat_label(stats_frame, "Swap Used:", 6)
         self.swap_percent_label = self.create_stat_label(stats_frame, "Swap Usage:", 7)
         
+        # CPU Usage Label
+        self.cpu_percent_label = self.create_stat_label(stats_frame, "CPU Usage:", 8)
+        
         # Memory Pressure Indicator
         pressure_frame = tk.LabelFrame(
             main_frame, 
@@ -323,6 +326,16 @@ class RAMOptimizerDashboard:
             else:
                 self.swap_percent_label.config(text="N/A")
             
+            # Update CPU usage
+            cpu_pct = psutil.cpu_percent(interval=None)
+            self.cpu_percent_label.config(text=f"{cpu_pct:.1f}%")
+            if cpu_pct < 50:
+                self.cpu_percent_label.config(fg='#00ff00')
+            elif cpu_pct < 80:
+                self.cpu_percent_label.config(fg='#ffcc00')
+            else:
+                self.cpu_percent_label.config(fg='#ff6b6b')
+            
             # Update memory pressure indicator
             self.update_pressure_indicator(mem.percent)
             
@@ -500,7 +513,8 @@ class RAMOptimizerMenuBar(rumps.App):
         """Update memory display in menu bar"""
         try:
             mem = psutil.virtual_memory()
-            self.title = f"RAM {mem.percent:.0f}%"
+            cpu_pct = psutil.cpu_percent(interval=None)
+            self.title = f"RAM {mem.percent:.0f}% | CPU {cpu_pct:.0f}%"
             
             # Auto-optimize if enabled
             if self.auto_optimize_enabled and mem.percent > self.auto_optimize_threshold:
