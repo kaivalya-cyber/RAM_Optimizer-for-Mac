@@ -876,6 +876,11 @@ class RAMOptimizerDashboard:
         else:
             return f"{b:.0f} B"
 
+    @staticmethod
+    def _get_user_cache_path():
+        """Return the absolute path to the user's Library/Caches directory"""
+        return os.path.expanduser('~/Library/Caches')
+
     def _update_temperature(self):
         """Update CPU temperature from macOS sensors"""
         temp_c = None
@@ -992,10 +997,10 @@ class RAMOptimizerDashboard:
         self.root.update()
 
         try:
-            home = os.path.expanduser('~')
+            user_cache = RAMOptimizerDashboard._get_user_cache_path()
             commands = [
                 f'sudo rm -rf /Library/Caches/*',
-                f'sudo rm -rf {home}/Library/Caches/*',
+                f'sudo rm -rf {user_cache}/*',
                 f'sudo rm -rf /System/Library/Caches/*'
             ]
 
@@ -1015,9 +1020,9 @@ class RAMOptimizerDashboard:
         self.root.update()
 
         try:
-            home = os.path.expanduser('~')
+            user_cache = RAMOptimizerDashboard._get_user_cache_path()
             commands = [
-                f'sudo rm -rf {home}/Library/Caches/*',
+                f'sudo rm -rf {user_cache}/*',
                 'sudo purge'
             ]
 
@@ -1144,9 +1149,9 @@ class RAMOptimizerMenuBar(rumps.App):
     def _clear_caches(self):
         """Clear cache files"""
         try:
-            home = os.path.expanduser('~')
+            user_cache = RAMOptimizerDashboard._get_user_cache_path()
             commands = [
-                f'sudo rm -rf {home}/Library/Caches/*',
+                f'sudo rm -rf {user_cache}/*',
                 'sudo rm -rf /Library/Caches/*'
             ]
 

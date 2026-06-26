@@ -283,31 +283,39 @@ class TestCacheClearCommands(unittest.TestCase):
         from ram_optimizer import RAMOptimizerDashboard
         self.dashboard = RAMOptimizerDashboard()
 
+    def test_get_user_cache_path_is_absolute(self):
+        """_get_user_cache_path should return an absolute path to user caches"""
+        from ram_optimizer import RAMOptimizerDashboard
+        path = RAMOptimizerDashboard._get_user_cache_path()
+        home = os.path.expanduser('~')
+        self.assertTrue(os.path.isabs(path))
+        self.assertIn(home, path)
+        self.assertIn('Library/Caches', path)
+        self.assertNotIn('~', path)
+
     @patch('subprocess.run')
     @patch('tkinter.messagebox.showinfo')
     def test_clear_caches_uses_absolute_paths(self, mock_msg, mock_run):
-        """clear_caches should use os.path.expanduser for home directory paths"""
-        home = os.path.expanduser('~')
-        expected_path = f'sudo rm -rf {home}/Library/Caches/*'
+        """clear_caches should use _get_user_cache_path helper for home directory paths"""
+        from ram_optimizer import RAMOptimizerDashboard
+        expected_path = f'sudo rm -rf {RAMOptimizerDashboard._get_user_cache_path()}/*'
 
-        # Manually set required attributes to avoid GUI setup
         self.dashboard.root = MagicMock()
         self.dashboard.status_label = MagicMock()
 
         self.dashboard.clear_caches()
 
-        # Check that at least one subprocess.run call used the expanded home path
         all_calls = [str(call) for call in mock_run.call_args_list]
-        found_home_path = any(expected_path in call for call in all_calls)
-        self.assertTrue(found_home_path,
-                        f"Expected cache command to use absolute path containing '{home}'")
+        found = any(expected_path in call for call in all_calls)
+        self.assertTrue(found,
+                        f"Expected cache command to use _get_user_cache_path, got: {all_calls}")
 
     @patch('subprocess.run')
     @patch('tkinter.messagebox.showinfo')
     def test_full_optimization_uses_absolute_paths(self, mock_msg, mock_run):
-        """full_optimization should use os.path.expanduser for home directory paths"""
-        home = os.path.expanduser('~')
-        expected_path = f'sudo rm -rf {home}/Library/Caches/*'
+        """full_optimization should use _get_user_cache_path helper"""
+        from ram_optimizer import RAMOptimizerDashboard
+        expected_path = f'sudo rm -rf {RAMOptimizerDashboard._get_user_cache_path()}/*'
 
         self.dashboard.root = MagicMock()
         self.dashboard.status_label = MagicMock()
@@ -315,9 +323,9 @@ class TestCacheClearCommands(unittest.TestCase):
         self.dashboard.full_optimization()
 
         all_calls = [str(call) for call in mock_run.call_args_list]
-        found_home_path = any(expected_path in call for call in all_calls)
-        self.assertTrue(found_home_path,
-                        f"Expected cache command to use absolute path containing '{home}'")
+        found = any(expected_path in call for call in all_calls)
+        self.assertTrue(found,
+                        f"Expected cache command to use _get_user_cache_path, got: {all_calls}")
 
 
 if __name__ == "__main__":
