@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Unit tests for RAM Optimizer"""
 
-import unittest
+import json
 import os
 import sys
-import json
 import tempfile
-from unittest.mock import patch, MagicMock
+import unittest
+from unittest.mock import MagicMock, patch
 
 # Add the project directory to sys.path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -17,6 +17,7 @@ class TestFormatBytes(unittest.TestCase):
 
     def setUp(self):
         from ram_optimizer import RAMOptimizerDashboard
+
         self.dashboard = RAMOptimizerDashboard()
 
     def test_bytes(self):
@@ -47,11 +48,13 @@ class TestDashboardSettings(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         self.config_path = os.path.join(self.temp_dir, "test_config.json")
         from ram_optimizer import RAMOptimizerDashboard
+
         self.dashboard = RAMOptimizerDashboard()
         self.dashboard.config_path = self.config_path
 
     def tearDown(self):
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_load_settings_empty(self):
@@ -62,7 +65,7 @@ class TestDashboardSettings(unittest.TestCase):
     def test_load_settings_valid_json(self):
         """Should return settings from valid JSON file"""
         test_data = {"auto_optimize": True, "auto_optimize_threshold": 90.0}
-        with open(self.config_path, 'w') as f:
+        with open(self.config_path, "w") as f:
             json.dump(test_data, f)
 
         settings = self.dashboard.load_settings()
@@ -71,7 +74,7 @@ class TestDashboardSettings(unittest.TestCase):
 
     def test_load_settings_corrupt_json(self):
         """Should return empty dict for corrupt JSON"""
-        with open(self.config_path, 'w') as f:
+        with open(self.config_path, "w") as f:
             f.write("this is not valid json {{{")
 
         settings = self.dashboard.load_settings()
@@ -81,7 +84,7 @@ class TestDashboardSettings(unittest.TestCase):
         """Should return empty dict when file can't be read"""
         if os.geteuid() == 0:
             self.skipTest("Running as root, can't test permission errors")
-        with open(self.config_path, 'w') as f:
+        with open(self.config_path, "w") as f:
             json.dump({"test": True}, f)
         os.chmod(self.config_path, 0o000)
         try:
@@ -100,8 +103,8 @@ class TestDashboardSettings(unittest.TestCase):
         self.assertEqual(saved["auto_optimize_threshold"], 85.0)
         self.assertEqual(saved["dark_mode"], True)
 
-    @patch('tkinter.BooleanVar')
-    @patch('tkinter.DoubleVar')
+    @patch("tkinter.BooleanVar")
+    @patch("tkinter.DoubleVar")
     def test_save_settings_with_gui_vars(self, mock_double, mock_bool):
         """save_settings should persist values from tkinter variables"""
         mock_bool.return_value.get.return_value = True
@@ -129,11 +132,12 @@ class TestDashboardSettings(unittest.TestCase):
 class TestMenuBarSettings(unittest.TestCase):
     """Test save_settings and toggle_auto_optimize for RAMOptimizerMenuBar"""
 
-    @patch('rumps.notification')
+    @patch("rumps.notification")
     def setUp(self, mock_notification):
         self.temp_dir = tempfile.mkdtemp()
         self.config_path = os.path.join(self.temp_dir, "test_mb_config.json")
         from ram_optimizer import RAMOptimizerDashboard, RAMOptimizerMenuBar
+
         # Create a MenuBar without actually running it
         self.menu_bar = object.__new__(RAMOptimizerMenuBar)
         self.menu_bar.config_path = self.config_path
@@ -150,12 +154,13 @@ class TestMenuBarSettings(unittest.TestCase):
 
     def tearDown(self):
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_save_settings_without_dashboard_opened(self):
         """save_settings should work when dashboard hasn't been opened (no dark_mode attr)"""
-        if hasattr(self.menu_bar.dashboard, 'dark_mode'):
-            delattr(self.menu_bar.dashboard, 'dark_mode')
+        if hasattr(self.menu_bar.dashboard, "dark_mode"):
+            delattr(self.menu_bar.dashboard, "dark_mode")
         self.menu_bar.save_settings()
 
         with open(self.config_path) as f:
@@ -174,11 +179,11 @@ class TestMenuBarSettings(unittest.TestCase):
             saved = json.load(f)
         self.assertFalse(saved["dark_mode"])
 
-    @patch('rumps.notification')
+    @patch("rumps.notification")
     def test_toggle_auto_optimize_no_dashboard(self, mock_notify):
         """toggle_auto_optimize should not crash when dashboard hasn't been opened"""
-        if hasattr(self.menu_bar.dashboard, 'auto_optimize'):
-            delattr(self.menu_bar.dashboard, 'auto_optimize')
+        if hasattr(self.menu_bar.dashboard, "auto_optimize"):
+            delattr(self.menu_bar.dashboard, "auto_optimize")
 
         sender = MagicMock()
         self.menu_bar.toggle_auto_optimize(sender)
@@ -189,8 +194,8 @@ class TestMenuBarSettings(unittest.TestCase):
             saved = json.load(f)
         self.assertTrue(saved["auto_optimize"])
 
-    @patch('tkinter.BooleanVar')
-    @patch('rumps.notification')
+    @patch("tkinter.BooleanVar")
+    @patch("rumps.notification")
     def test_toggle_auto_optimize_with_dashboard_opened(self, mock_notify, mock_bool):
         """toggle_auto_optimize should sync to dashboard when it's open"""
         mock_var = mock_bool.return_value
@@ -206,7 +211,7 @@ class TestMenuBarSettings(unittest.TestCase):
 class TestLogAction(unittest.TestCase):
     """Test the log_action static method"""
 
-    @patch('psutil.virtual_memory')
+    @patch("psutil.virtual_memory")
     def test_log_action_writes_entry(self, mock_mem):
         """log_action should write a formatted log entry"""
         from ram_optimizer import RAMOptimizerDashboard
@@ -216,7 +221,7 @@ class TestLogAction(unittest.TestCase):
         temp_dir = tempfile.mkdtemp()
         log_path = os.path.join(temp_dir, "ram_optimizer.log")
         try:
-            with patch('ram_optimizer.os.path.expanduser', return_value=log_path):
+            with patch("ram_optimizer.os.path.expanduser", return_value=log_path):
                 RAMOptimizerDashboard.log_action("Test Action", "Test Details")
 
             self.assertTrue(os.path.exists(log_path))
@@ -226,6 +231,7 @@ class TestLogAction(unittest.TestCase):
             self.assertIn("Test Details", content)
         finally:
             import shutil
+
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 
@@ -234,6 +240,7 @@ class TestMemoryHistory(unittest.TestCase):
 
     def setUp(self):
         from ram_optimizer import RAMOptimizerDashboard
+
         self.dashboard = RAMOptimizerDashboard()
 
     def test_memory_history_maxlen(self):
@@ -254,7 +261,7 @@ class TestMemoryHistory(unittest.TestCase):
 class TestUpdateThreshold(unittest.TestCase):
     """Test the update_threshold method"""
 
-    @patch('tkinter.DoubleVar')
+    @patch("tkinter.DoubleVar")
     def test_update_threshold_syncs_value(self, mock_double):
         """update_threshold should sync tk variable to instance attribute"""
         from ram_optimizer import RAMOptimizerDashboard
@@ -272,6 +279,7 @@ class TestUpdateThreshold(unittest.TestCase):
             self.assertEqual(dashboard.auto_optimize_threshold, 75.0)
         finally:
             import shutil
+
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 
@@ -280,24 +288,27 @@ class TestCacheClearCommands(unittest.TestCase):
 
     def setUp(self):
         from ram_optimizer import RAMOptimizerDashboard
+
         self.dashboard = RAMOptimizerDashboard()
 
     def test_get_user_cache_path_is_absolute(self):
         """_get_user_cache_path should return an absolute path to user caches"""
         from ram_optimizer import RAMOptimizerDashboard
+
         path = RAMOptimizerDashboard._get_user_cache_path()
-        home = os.path.expanduser('~')
+        home = os.path.expanduser("~")
         self.assertTrue(os.path.isabs(path))
         self.assertIn(home, path)
-        self.assertIn('Library/Caches', path)
-        self.assertNotIn('~', path)
+        self.assertIn("Library/Caches", path)
+        self.assertNotIn("~", path)
 
-    @patch('subprocess.run')
-    @patch('tkinter.messagebox.showinfo')
+    @patch("subprocess.run")
+    @patch("tkinter.messagebox.showinfo")
     def test_clear_caches_uses_absolute_paths(self, mock_msg, mock_run):
         """clear_caches should use _get_user_cache_path helper for home directory paths"""
         from ram_optimizer import RAMOptimizerDashboard
-        expected_path = f'sudo rm -rf {RAMOptimizerDashboard._get_user_cache_path()}/*'
+
+        expected_path = f"sudo rm -rf {RAMOptimizerDashboard._get_user_cache_path()}/*"
 
         self.dashboard.root = MagicMock()
         self.dashboard.status_label = MagicMock()
@@ -306,15 +317,15 @@ class TestCacheClearCommands(unittest.TestCase):
 
         all_calls = [str(call) for call in mock_run.call_args_list]
         found = any(expected_path in call for call in all_calls)
-        self.assertTrue(found,
-                        f"Expected cache command to use _get_user_cache_path, got: {all_calls}")
+        self.assertTrue(found, f"Expected cache command to use _get_user_cache_path, got: {all_calls}")
 
-    @patch('subprocess.run')
-    @patch('tkinter.messagebox.showinfo')
+    @patch("subprocess.run")
+    @patch("tkinter.messagebox.showinfo")
     def test_full_optimization_uses_absolute_paths(self, mock_msg, mock_run):
         """full_optimization should use _get_user_cache_path helper"""
         from ram_optimizer import RAMOptimizerDashboard
-        expected_path = f'sudo rm -rf {RAMOptimizerDashboard._get_user_cache_path()}/*'
+
+        expected_path = f"sudo rm -rf {RAMOptimizerDashboard._get_user_cache_path()}/*"
 
         self.dashboard.root = MagicMock()
         self.dashboard.status_label = MagicMock()
@@ -323,8 +334,7 @@ class TestCacheClearCommands(unittest.TestCase):
 
         all_calls = [str(call) for call in mock_run.call_args_list]
         found = any(expected_path in call for call in all_calls)
-        self.assertTrue(found,
-                        f"Expected cache command to use _get_user_cache_path, got: {all_calls}")
+        self.assertTrue(found, f"Expected cache command to use _get_user_cache_path, got: {all_calls}")
 
 
 if __name__ == "__main__":

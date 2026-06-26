@@ -22,8 +22,10 @@ A real-time RAM monitoring and optimization tool for macOS with a convenient men
 ## Requirements
 
 - macOS 10.13 or later
-- Python 3.7 or later
+- Python 3.10 or later
 - Administrator privileges (for purge and cache clearing commands)
+
+> **Note:** This project uses the [`rumps`](https://github.com/jaredks/rumps) library which depends on **PyObjC** — a macOS-only framework. The application will only run on macOS. Additionally, `rumps` works best on Python 3.10+, so 3.9 is not recommended.
 
 ## Installation
 
@@ -129,6 +131,21 @@ The app will appear in your menu bar as "RAM XX%" showing your current memory us
 **Dashboard won't open**: Make sure the menu bar app is running and click "Open Dashboard" from the menu
 
 ## Contributing
+
+### Development Setup
+
+1. Install pre-commit hooks for linting:
+```bash
+pip3 install pre-commit
+pre-commit install
+```
+
+2. Linting and formatting is handled by [ruff](https://github.com/astral-sh/ruff). Configuration lives in `pyproject.toml`.
+
+3. Run tests:
+```bash
+python3 -m pytest test_ram_optimizer.py -v
+```
 
 Feel free to submit issues, fork the repository, and create pull requests for any improvements.
 
