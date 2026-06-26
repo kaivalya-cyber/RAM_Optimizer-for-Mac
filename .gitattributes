@@ -1,0 +1,26 @@
+# Auto-detect text files and ensure LF line endings
+* text=auto
+
+# Python
+*.py text eol=lf
+*.pyi text eol=lf
+
+# Config / data files
+*.toml text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+Makefile text eol=lf
+
+# Shell scripts
+*.sh text eol=lf
+
+# Binary files (no line ending conversion)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary

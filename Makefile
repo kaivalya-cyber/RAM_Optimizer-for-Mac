@@ -4,12 +4,12 @@ help:  ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
 install:  ## Install dependencies and pre-commit hooks
-	pip3 install -r requirements.txt
-	pip3 install pytest pre-commit
+	pip install -r requirements.txt
+	pip install pytest pre-commit
 	pre-commit install
 
 test:  ## Run unit tests
-	python3 -m pytest test_ram_optimizer.py -v
+	python -m pytest test_ram_optimizer.py -v
 
 lint:  ## Run ruff linter
 	ruff check ram_optimizer.py test_ram_optimizer.py
