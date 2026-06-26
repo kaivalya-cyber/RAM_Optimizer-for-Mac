@@ -4,6 +4,15 @@ Real-Time RAM Optimizer for Mac
 Menu bar application with expandable dashboard
 """
 
+import sys
+
+if sys.version_info < (3, 10):  # noqa: UP036 — runtime safety net for users
+    sys.exit(
+        f"RAM Optimizer requires Python 3.10 or later.\n"
+        f"You are running Python {sys.version_info.major}.{sys.version_info.minor}.\n"
+        f"Please upgrade: https://www.python.org/downloads/"
+    )
+
 import contextlib
 import csv
 import json
@@ -1257,10 +1266,12 @@ class RAMOptimizerMenuBar(rumps.App):
 
         if os.path.exists(plist_path):
             os.remove(plist_path)
-            rumps.notification(title="RAM Optimizer", subtitle="Startup Launch", message="Removed from login items.")
+            rumps.notification(
+                title="RAM Optimizer",
+                subtitle="Startup Launch",
+                message="Removed from login items.",
+            )
         else:
-            import sys
-
             app_path = os.path.abspath(sys.argv[0])
             try:
                 python_path = subprocess.check_output(["which", "python3"], text=True).strip()
