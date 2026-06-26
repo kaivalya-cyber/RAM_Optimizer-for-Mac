@@ -6,7 +6,6 @@ import os
 import sys
 import json
 import tempfile
-from collections import deque
 from unittest.mock import patch, MagicMock
 
 # Add the project directory to sys.path

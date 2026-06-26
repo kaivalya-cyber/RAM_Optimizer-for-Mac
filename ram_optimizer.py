@@ -10,7 +10,6 @@ import subprocess
 import threading
 import json
 import os
-import sys
 import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter import messagebox, filedialog
@@ -947,7 +946,7 @@ class RAMOptimizerDashboard:
                 proc.kill()
                 proc.wait(timeout=2)
             
-            self.log_action(f"Killed Process", f"{name} (PID: {pid})")
+            self.log_action("Killed Process", f"{name} (PID: {pid})")
             self.status_label.config(text=f"Killed {name} (PID: {pid})")
             messagebox.showinfo("Process Killed", f"Successfully killed '{name}' (PID: {pid})")
         except psutil.NoSuchProcess:
@@ -999,9 +998,9 @@ class RAMOptimizerDashboard:
         try:
             user_cache = RAMOptimizerDashboard._get_user_cache_path()
             commands = [
-                f'sudo rm -rf /Library/Caches/*',
+                'sudo rm -rf /Library/Caches/*',
                 f'sudo rm -rf {user_cache}/*',
-                f'sudo rm -rf /System/Library/Caches/*'
+                'sudo rm -rf /System/Library/Caches/*'
             ]
 
             for cmd in commands:
