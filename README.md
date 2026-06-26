@@ -118,7 +118,7 @@ The app will appear in your menu bar as "RAM XX%" showing your current memory us
 
 ## Troubleshooting
 
-**Application won't start**: Ensure you have Python 3.7+ and all dependencies installed
+**Application won't start**: Ensure you have Python 3.10+ and all dependencies installed
 
 **Menu bar icon doesn't appear**: Check that the application is running in the background (no dock icon is normal)
 
@@ -132,19 +132,22 @@ The app will appear in your menu bar as "RAM XX%" showing your current memory us
 
 ## Contributing
 
-### Development Setup
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
 
-1. Install pre-commit hooks for linting:
+### Quick Development Setup
+
 ```bash
-pip3 install pre-commit
-pre-commit install
+make install   # Install deps, pytest, pre-commit hooks
+make check     # Run lint + tests
 ```
 
-2. Linting and formatting is handled by [ruff](https://github.com/astral-sh/ruff). Configuration lives in `pyproject.toml`.
+### Other Commands
 
-3. Run tests:
 ```bash
-python3 -m pytest test_ram_optimizer.py -v
+make test      # Run tests only
+make lint      # Check code style
+make format    # Auto-fix and format code
+make clean     # Remove cache files
 ```
 
 Feel free to submit issues, fork the repository, and create pull requests for any improvements.
