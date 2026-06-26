@@ -532,32 +532,37 @@ class RAMOptimizerDashboard:
         )
         self.status_label.pack(side=tk.BOTTOM, fill=tk.X)
 
-    def create_stat_label(self, parent, text, row):
-        """Create a statistic label"""
-        frame = tk.Frame(parent, bg='#2d2d2d')
-        frame.pack(fill=tk.X, padx=10, pady=5)
-        
-        label = tk.Label(
-            frame, 
-            text=text, 
-            font=('Helvetica', 11),
-            bg='#2d2d2d', 
-            fg='#aaaaaa',
-            width=20,
-            anchor='w'
-        )
-        label.pack(side=tk.LEFT)
-        
-        value_label = tk.Label(
-            frame, 
-            text="---", 
-            font=('Helvetica', 11, 'bold'),
-            bg='#2d2d2d', 
-            fg='#00ff00'
-        )
-        value_label.pack(side=tk.LEFT)
-        
-        return value_label
+    def update_threshold(self):
+        """Update auto-optimize threshold and save settings"""
+        self.auto_optimize_threshold = self.auto_optimize_threshold_var.get()
+        self.save_settings()
+
+    def load_settings(self):
+        """Load settings from JSON config file"""
+        try:
+            if os.path.exists(self.config_path):
+                with open(self.config_path, 'r') as f:
+                    settings = json.load(f)
+                return settings
+        except (json.JSONDecodeError, IOError):
+            pass
+        return {}
+
+    def save_settings(self):
+        """Save settings to JSON config file"""
+        settings = {
+            'auto_optimize': self.auto_optimize.get() if hasattr(self, 'auto_optimize') else False,
+            'auto_optimize_threshold': self.auto_optimize_threshold_var.get() if hasattr(self, 'auto_optimize_threshold_var') else 85.0,
+            'alert_enabled': self.alert_enabled.get() if hasattr(self, 'alert_enabled') else False,
+            'alert_threshold': self.alert_threshold_var.get() if hasattr(self, 'alert_threshold_var') else 80.0,
+            'battery_aware': self.battery_aware.get() if hasattr(self, 'battery_aware') else True,
+            'dark_mode': self.dark_mode.get() if hasattr(self, 'dark_mode') else True
+        }
+        try:
+            with open(self.config_path, 'w') as f:
+                json.dump(settings, f, indent=2)
+        except IOError:
+            pass
 
     def toggle_theme(self):
         """Toggle between dark and light themes"""
@@ -985,17 +990,18 @@ class RAMOptimizerDashboard:
         """Clear system caches"""
         self.status_label.config(text="Clearing caches...")
         self.root.update()
-        
+
         try:
+            home = os.path.expanduser('~')
             commands = [
-                'sudo rm -rf /Library/Caches/*',
-                'sudo rm -rf ~/Library/Caches/*',
-                'sudo rm -rf /System/Library/Caches/*'
+                f'sudo rm -rf /Library/Caches/*',
+                f'sudo rm -rf {home}/Library/Caches/*',
+                f'sudo rm -rf /System/Library/Caches/*'
             ]
-            
+
             for cmd in commands:
                 subprocess.run(cmd, shell=True, capture_output=True, timeout=30)
-            
+
             messagebox.showinfo("Success", "Caches cleared successfully!")
             self.status_label.config(text="Caches cleared successfully")
             self.log_action("Caches Cleared", "Success")
@@ -1007,16 +1013,17 @@ class RAMOptimizerDashboard:
         """Run full optimization"""
         self.status_label.config(text="Running full optimization...")
         self.root.update()
-        
+
         try:
+            home = os.path.expanduser('~')
             commands = [
-                'sudo rm -rf ~/Library/Caches/*',
+                f'sudo rm -rf {home}/Library/Caches/*',
                 'sudo purge'
             ]
-            
+
             for cmd in commands:
                 subprocess.run(cmd, shell=True, capture_output=True, timeout=30)
-            
+
             messagebox.showinfo("Success", "Full optimization completed!")
             self.status_label.config(text="Full optimization completed")
             self.log_action("Full Optimization", "Success")
@@ -1091,12 +1098,15 @@ class RAMOptimizerMenuBar(rumps.App):
             # Cache CPU for dashboard to read
             self.dashboard._cached_cpu_pct = cpu_pct
             
-            # Sync alert and battery settings from dashboard
+            # Sync settings from dashboard (if dashboard GUI has been created)
             if hasattr(self.dashboard, 'alert_enabled'):
                 self.alert_enabled = self.dashboard.alert_enabled.get()
                 self.alert_threshold = self.dashboard.alert_threshold_var.get()
             if hasattr(self.dashboard, 'battery_aware'):
                 self.battery_aware = self.dashboard.battery_aware.get()
+            if hasattr(self.dashboard, 'auto_optimize'):
+                self.auto_optimize_enabled = self.dashboard.auto_optimize.get()
+                self.auto_optimize_threshold = self.dashboard.auto_optimize_threshold_var.get()
             
             # Auto-optimize if enabled (with battery check)
             if self.auto_optimize_enabled and mem.percent > self.auto_optimize_threshold:
@@ -1134,14 +1144,15 @@ class RAMOptimizerMenuBar(rumps.App):
     def _clear_caches(self):
         """Clear cache files"""
         try:
+            home = os.path.expanduser('~')
             commands = [
-                'sudo rm -rf ~/Library/Caches/*',
+                f'sudo rm -rf {home}/Library/Caches/*',
                 'sudo rm -rf /Library/Caches/*'
             ]
-            
+
             for cmd in commands:
                 subprocess.run(cmd, shell=True, capture_output=True, timeout=30)
-            
+
             rumps.notification(title="RAM Optimizer", subtitle="Success", message="Caches cleared successfully")
         except Exception as e:
             rumps.notification(title="RAM Optimizer", subtitle="Error", message=f"Failed to clear caches: {str(e)}")
@@ -1151,8 +1162,9 @@ class RAMOptimizerMenuBar(rumps.App):
         self.auto_optimize_enabled = not self.auto_optimize_enabled
         sender.title = f"Auto-Optimize: {'On' if self.auto_optimize_enabled else 'Off'}"
         
-        # Also update dashboard setting
-        self.dashboard.auto_optimize.set(self.auto_optimize_enabled)
+        # Also update dashboard setting if dashboard has been opened
+        if hasattr(self.dashboard, 'auto_optimize'):
+            self.dashboard.auto_optimize.set(self.auto_optimize_enabled)
         
         self.save_settings()
         rumps.notification(
@@ -1174,6 +1186,7 @@ class RAMOptimizerMenuBar(rumps.App):
 
     def save_settings(self):
         """Save settings to JSON config file"""
+        dark_mode = self.dashboard.dark_mode.get() if hasattr(self.dashboard, 'dark_mode') else True
         settings = {
             'auto_optimize': self.auto_optimize_enabled,
             'auto_optimize_threshold': self.auto_optimize_threshold,
@@ -1181,7 +1194,8 @@ class RAMOptimizerMenuBar(rumps.App):
             'alert_threshold': self.alert_threshold,
             'battery_aware': self.battery_aware,
             'schedule_enabled': self.schedule_enabled,
-            'schedule_interval': self.schedule_interval_minutes
+            'schedule_interval': self.schedule_interval_minutes,
+            'dark_mode': dark_mode
         }
         try:
             with open(self.config_path, 'w') as f:
